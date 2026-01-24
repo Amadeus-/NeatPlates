@@ -316,7 +316,7 @@ function Events.UPDATE_BATTLEFIELD_SCORE()
 end
 
 function Events.COMBAT_LOG_EVENT_UNFILTERED()
-	-- Combat log parsing disabled in 12.0.0+ (Midnight) - API no longer provides spell details
+	-- Combat log parsing disabled in 12.0.0+ (Midnight) - it is no longer available to addons
 	if isMidnight then return end
 
 	-- Combat Log Unfiltered

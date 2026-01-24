@@ -1922,7 +1922,7 @@ do
 	end
 
 	function CoreEvents:COMBAT_LOG_EVENT_UNFILTERED(...)
-		-- In 12.0.0+ (Midnight), COMBAT_LOG_EVENT_UNFILTERED is restricted to damage meter addons only.
+		-- In 12.0.0+ (Midnight), COMBAT_LOG_EVENT_UNFILTERED is no longer available to addons
 		-- Skip processing entirely on Midnight clients - interrupt display still works via UNIT_SPELLCAST_INTERRUPTED.
 		if isMidnight then return end
 
@@ -2036,7 +2036,7 @@ do
 	NeatPlatesCore:SetFrameStrata("TOOLTIP") 	-- When parented to WorldFrame, causes OnUpdate handler to run close to last
 	NeatPlatesCore:SetScript("OnEvent", EventHandler)
 	for eventName in pairs(CoreEvents) do
-		-- Skip COMBAT_LOG_EVENT_UNFILTERED on 12.0.0+ (Midnight) - it's restricted to damage meter addons only.
+		-- Skip COMBAT_LOG_EVENT_UNFILTERED on 12.0.0+ (Midnight) - it is no longer available to addons
 		-- Interrupt display still works via UNIT_SPELLCAST_INTERRUPTED which is registered per-unit.
 		if isMidnight and eventName == "COMBAT_LOG_EVENT_UNFILTERED" then
 			-- Skip registration - this event would error or not provide useful data in Midnight
