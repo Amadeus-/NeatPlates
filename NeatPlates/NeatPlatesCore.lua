@@ -422,6 +422,14 @@ local function UpdateNameplateSize(plate, show, cWidth, cHeight)
 			plate.extended.visual.hitbox:SetHeight(hitbox.height)
 
 			if show then plate.extended.visual.hitbox:Show() else plate.extended.visual.hitbox:Hide() end
+
+			-- WoW 12.0.0+ (Midnight): Update the hit test frame position and size
+			-- The hit test frame must match the clickable area for proper targeting
+			if plate.NeatPlatesHitTestFrame then
+				plate.NeatPlatesHitTestFrame:ClearAllPoints()
+				plate.NeatPlatesHitTestFrame:SetPoint("CENTER", plate, "CENTER")
+				plate.NeatPlatesHitTestFrame:SetSize(hitbox.width, hitbox.height)
+			end
 		end
 
 	end)
@@ -510,6 +518,10 @@ do
 	function ShouldShowBlizzardPlate(plate)
 		if DisplayingBlizzardPlate(plate) then
 			plate.UnitFrame:Show()
+			-- WoW 12.0.0+ (Midnight): Restore alpha when showing Blizzard plates
+			if isMidnight then
+				plate.UnitFrame:SetAlpha(1)
+			end
 			plate.extended:Hide()
 
 			-- -- Re-register unitframe events, if needed (Note: This can cause taint, so disabled for now)
@@ -518,7 +530,12 @@ do
 			-- 	CompactUnitFrame_UpdateUnitEvents(plate.UnitFrame)
 			-- end
 		elseif plate.UnitFrame then
-			plate.UnitFrame:Hide()
+			-- WoW 12.0.0+ (Midnight): Use SetAlpha(0) to hide visuals while keeping hit testing active
+			if isMidnight then
+				plate.UnitFrame:SetAlpha(0)
+			else
+				plate.UnitFrame:Hide()
+			end
 		end
 	end
 
@@ -716,6 +733,15 @@ do
 		extended.stylename = ""
 
 		carrier:SetPoint("CENTER", plate, "CENTER")
+
+		-- WoW 12.0.0+ (Midnight): Create a hit test frame for click targeting
+		-- In 12.0, Blizzard changed nameplate click handling to use C_NamePlateManager.SetNamePlateHitTestFrame
+		-- The hit test frame must be parented to the actual nameplate base frame (not the carrier/WorldFrame)
+		if isMidnight and C_NamePlateManager and C_NamePlateManager.SetNamePlateHitTestFrame then
+			local hitTestFrame = CreateFrame("Frame", nil, plate)
+			hitTestFrame:SetAllPoints(plate)  -- Will be repositioned in UpdateNameplateSize
+			plate.NeatPlatesHitTestFrame = hitTestFrame
+		end
 
 		UpdateNameplateSize(plate)
 	end
@@ -960,6 +986,15 @@ do
 
 		-- Register events
 		RegisterNameplateEvents(plate, unitid)
+
+		-- WoW 12.0.0+ (Midnight): Attempt to register our hit test frame with the C++ nameplate manager
+		-- Note: The primary fix for 12.0 click targeting is using SetAlpha(0) instead of Hide() on the UnitFrame
+		-- This keeps Blizzard's HitTestFrame visible and functional. Our custom frame is an optional optimization
+		-- that may allow better click area matching with NeatPlates visuals if the API call succeeds.
+		if isMidnight and C_NamePlateManager and C_NamePlateManager.SetNamePlateHitTestFrame and plate.NeatPlatesHitTestFrame then
+			pcall(C_NamePlateManager.SetNamePlateHitTestFrame, unitid, plate.NeatPlatesHitTestFrame)
+			-- If this fails, no worries - the Blizzard HitTestFrame will still work via SetAlpha(0) approach
+		end
 
 	end
 
@@ -1848,8 +1883,20 @@ do
 
 				-- Unhook UnitFrame events
 				if plate.UnitFrame and not plate.showBlizzardPlate then
-					plate.UnitFrame:Hide()
-					plate.UnitFrame:UnregisterAllEvents()
+					-- WoW 12.0.0+ (Midnight): Don't hide the UnitFrame completely
+					-- The UnitFrame's HitTestFrame is used by C++ for click targeting
+					-- Instead, we hide the visual children while keeping hit testing active
+					if isMidnight then
+						-- Hide all visual children of UnitFrame but keep the frame itself shown
+						-- This preserves the HitTestFrame which C++ uses for click detection
+						plate.UnitFrame:SetAlpha(0)
+						-- Disable all events on the UnitFrame so it doesn't process updates
+						plate.UnitFrame:UnregisterAllEvents()
+					else
+						-- Pre-12.0: Hide the entire UnitFrame (click targeting worked differently)
+						plate.UnitFrame:Hide()
+						plate.UnitFrame:UnregisterAllEvents()
+					end
 				end
 
 		 		OnShowNameplate(plate, unitid)
@@ -1922,7 +1969,7 @@ do
 	end
 
 	function CoreEvents:COMBAT_LOG_EVENT_UNFILTERED(...)
-		-- In 12.0.0+ (Midnight), COMBAT_LOG_EVENT_UNFILTERED is no longer available to addons
+		-- In 12.0.0+ (Midnight), COMBAT_LOG_EVENT_UNFILTERED is restricted to damage meter addons only.
 		-- Skip processing entirely on Midnight clients - interrupt display still works via UNIT_SPELLCAST_INTERRUPTED.
 		if isMidnight then return end
 
@@ -2036,7 +2083,7 @@ do
 	NeatPlatesCore:SetFrameStrata("TOOLTIP") 	-- When parented to WorldFrame, causes OnUpdate handler to run close to last
 	NeatPlatesCore:SetScript("OnEvent", EventHandler)
 	for eventName in pairs(CoreEvents) do
-		-- Skip COMBAT_LOG_EVENT_UNFILTERED on 12.0.0+ (Midnight) - it is no longer available to addons
+		-- Skip COMBAT_LOG_EVENT_UNFILTERED on 12.0.0+ (Midnight) - it's restricted to damage meter addons only.
 		-- Interrupt display still works via UNIT_SPELLCAST_INTERRUPTED which is registered per-unit.
 		if isMidnight and eventName == "COMBAT_LOG_EVENT_UNFILTERED" then
 			-- Skip registration - this event would error or not provide useful data in Midnight
