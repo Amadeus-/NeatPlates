@@ -12,6 +12,9 @@ local IsOffTanked = NeatPlatesHubFunctions.IsOffTanked
 local IsTankingAuraActive = NeatPlatesWidgets.IsPlayerTank
 local IsHealer = NeatPlatesUtility.IsHealer
 local IsAuraShown = NeatPlatesWidgets.IsAuraShown
+-- 12.0.0+ Secret value helpers
+local SafeIsDamaged = NeatPlatesHubHelpers.SafeIsDamaged
+local SafeHasHealth = NeatPlatesHubHelpers.SafeHasHealth
 
 
 local function IsUnitActive(unit)
@@ -24,7 +27,8 @@ local function IsUnitActive(unit)
 			return true
 		end
 	else	-- unit.type == "PLAYER"
-		if (unit.health < unit.healthmax) then
+		-- Use SafeIsDamaged for 12.0.0+ secret value handling
+		if SafeIsDamaged(unit) then
 			return true
 		end
 	end
@@ -57,7 +61,8 @@ end
 
 -- Bars when unit is active or damaged
 local function StyleBarsOnActive(unit)
-	if (unit.health < unit.healthmax) or (unit.threatValue > 1) or unit.isMarked then 	--or unit.isInCombat
+	-- Use SafeIsDamaged for 12.0.0+ secret value handling
+	if SafeIsDamaged(unit) or (unit.threatValue > 1) or unit.isMarked then 	--or unit.isInCombat
 		return BARMODE
 	end
 	return HEADLINEMODE
@@ -82,7 +87,8 @@ end
 local function StyleBarsOnLowThreat(unit)
 	if InCombatLockdown() and unit.reaction ~= "FRIENDLY" then
 		if IsOffTanked(unit) then return HEADLINEMODE end
-		if unit.threatValue < 2 and unit.health > 0 then return BARMODE end
+		-- Use SafeHasHealth for 12.0.0+ secret value handling
+		if unit.threatValue < 2 and SafeHasHealth(unit) then return BARMODE end
 	elseif LocalVars.ColorShowPartyAggro and unit.reaction == "FRIENDLY" then
 		if GetFriendlyThreat(unit.unitid) == true then return BARMODE end
 	end
@@ -126,7 +132,8 @@ end
 	-- Low Threat
 	if InCombatLockdown() and unit.reaction ~= "FRIENDLY" then
 		if IsOffTanked(unit) then return "NameOnly" end
-		if unit.threatValue < 2 and unit.health > 0 then return "Default" end
+		-- Use SafeHasHealth for 12.0.0+ secret value handling
+		if unit.threatValue < 2 and SafeHasHealth(unit) then return "Default" end
 	elseif LocalVars.ColorShowPartyAggro and unit.reaction == "FRIENDLY" then
 		if GetFriendlyThreat(unit.unitid) == true then return "Default" end
 	end

@@ -38,6 +38,8 @@ local IsTankingAuraActive = NeatPlatesWidgets.IsPlayerTank
 local InCombatLockdown = InCombatLockdown
 local StyleDelegate = NeatPlatesHubFunctions.SetStyleNamed
 local AddHubFunction = NeatPlatesHubHelpers.AddHubFunction
+-- 12.0.0+ Secret value helpers
+local SafeHealthPercent = NeatPlatesHubHelpers.SafeHealthPercent
 
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
@@ -49,7 +51,8 @@ local function DummyFunction() return end
 
 -- By Low Health
 local function ColorFunctionByHealth(unit)
-	local health = unit.health/unit.healthmax
+	-- Use SafeHealthPercent for 12.0.0+ secret value handling
+	local health = SafeHealthPercent(unit)
 	if health > LocalVars.HighHealthThreshold then return LocalVars.ColorHighHealth
 	elseif health > LocalVars.LowHealthThreshold then return LocalVars.ColorMediumHealth
 	else return LocalVars.ColorLowHealth end
@@ -206,7 +209,8 @@ AddHubFunction(FriendlyBarFunctions, NeatPlatesHubMenus.FriendlyBarModes, ColorF
 local function CustomColorDelegate(unit)
 	-- Functions is a bit messy because it attempts to use the order of items as a priority...
 	local color, aura, threshold, current, lowest
-	local health = (unit.health/unit.healthmax)*100
+	-- Use SafeHealthPercent for 12.0.0+ secret value handling
+	local health = SafeHealthPercent(unit) * 100
 	local raidIconTable = {
 		[1] = "STAR",
 		[2] = "CIRCLE",
@@ -236,7 +240,10 @@ local function CustomColorDelegate(unit)
 				-- Do nothing, and skip the other checks for this line/condition
 		-- Custom Color by Buff/Debuff
 			elseif not color and aura and aura[key] then
-				if string.lower(LocalVars.CustomColorLookup[key].prefix) ~= "my" or aura[key].caster == "player" then
+				-- In 12.0.0+, caster (sourceUnit) can be a secret value - check before comparing
+				local auraCaster = aura[key].caster
+				local casterIsPlayer = not (issecretvalue and issecretvalue(auraCaster)) and auraCaster == "player"
+				if string.lower(LocalVars.CustomColorLookup[key].prefix) ~= "my" or casterIsPlayer then
 					color = HexToRGB(LocalVars.CustomColorLookup[key].hex); break
 				end
 
@@ -366,7 +373,14 @@ local WarningColor = {}
 
 -- Player Health (na)
 local function WarningBorderFunctionByPlayerHealth(unit)
-	local healthPct = UnitHealth("player")/UnitHealthMax("player")
+	local health = UnitHealth("player")
+	local healthMax = UnitHealthMax("player")
+	-- Check for secret values before arithmetic (12.0.0+)
+	if issecretvalue and (issecretvalue(health) or issecretvalue(healthMax)) then
+		return nil
+	end
+	if healthMax == 0 then return nil end
+	local healthPct = health / healthMax
 	if healthPct < .3 then return HubData.Colors.DarkRed end
 end
 

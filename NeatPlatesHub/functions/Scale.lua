@@ -17,6 +17,10 @@ local IsHealer = NeatPlatesUtility.IsHealer
 local UnitFilter = NeatPlatesHubFunctions.UnitFilter
 local IsAuraShown = NeatPlatesWidgets.IsAuraShown
 local function DummyFunction() end
+-- 12.0.0+ Secret value helpers
+local SafeHealthPercent = NeatPlatesHubHelpers.SafeHealthPercent
+local SafeIsDamaged = NeatPlatesHubHelpers.SafeIsDamaged
+local SafeHasHealth = NeatPlatesHubHelpers.SafeHasHealth
 
 ------------------------------------------------------------------------------
 -- Scale
@@ -26,7 +30,8 @@ local MiniMobScale = .7
 
 -- By Low Health
 local function ScaleFunctionByLowHealth(unit)
-	if unit.health/unit.healthmax < LocalVars.LowHealthThreshold then return LocalVars.ScaleSpotlight end
+	-- Use SafeHealthPercent for 12.0.0+ secret value handling
+	if SafeHealthPercent(unit) < LocalVars.LowHealthThreshold then return LocalVars.ScaleSpotlight end
 end
 
 -- By Elite
@@ -42,7 +47,8 @@ end
 -- By Threat (High) DPS Mode
 local function ScaleFunctionByThreatHigh(unit)
 	if InCombatLockdown() and unit.reaction ~= "FRIENDLY" and (unit.isInCombat or UnitIsUnit(unit.unitid.."target", "player")) then
-		if unit.type == "NPC" and unit.threatValue > 1 and unit.health > 2 then return LocalVars.ScaleSpotlight end
+		-- Use SafeHasHealth for 12.0.0+ secret value handling (health > 2 means has health)
+		if unit.type == "NPC" and unit.threatValue > 1 and SafeHasHealth(unit) then return LocalVars.ScaleSpotlight end
 	elseif LocalVars.ColorShowPartyAggro and unit.reaction == "FRIENDLY" then
 		if GetFriendlyThreat(unit.unitid) then return LocalVars.ScaleSpotlight end
 	end
@@ -52,7 +58,8 @@ end
 local function ScaleFunctionByThreatLow(unit)
 	if InCombatLockdown() and unit.reaction ~= "FRIENDLY" and (unit.isInCombat or UnitIsUnit(unit.unitid.."target", "player")) then
 		if IsOffTanked(unit) then return end
-		if unit.type == "NPC" and unit.health > 2 and unit.threatValue < 2 then return LocalVars.ScaleSpotlight end
+		-- Use SafeHasHealth for 12.0.0+ secret value handling
+		if unit.type == "NPC" and SafeHasHealth(unit) and unit.threatValue < 2 then return LocalVars.ScaleSpotlight end
 	elseif LocalVars.ColorShowPartyAggro and unit.reaction == "FRIENDLY" then
 		if GetFriendlyThreat(unit.unitid) then return LocalVars.ScaleSpotlight end
 	end
@@ -164,7 +171,8 @@ local function ScaleDelegate(...)
 	elseif (LocalVars.ScaleMouseoverSpotlight and unit.isMouseover) then scale = LocalVars.ScaleSpotlight
 	elseif LocalVars.ScaleIgnoreNonEliteUnits and (not unit.isElite) then scale = nil
 	elseif LocalVars.ScaleIgnoreNeutralUnits and unit.reaction == "NEUTRAL" then scale = nil
-	elseif LocalVars.ScaleIgnoreInactive and not ( (unit.health < unit.healthmax) or (unit.isInCombat or UnitIsUnit(unit.unitid.."target", "player") or unit.threatValue > 0) or (unit.isCasting == true) ) then scale = nil
+	-- Use SafeIsDamaged for 12.0.0+ secret value handling
+	elseif LocalVars.ScaleIgnoreInactive and not ( SafeIsDamaged(unit) or (unit.isInCombat or UnitIsUnit(unit.unitid.."target", "player") or unit.threatValue > 0) or (unit.isCasting == true) ) then scale = nil
 	elseif LocalVars.ScaleCastingSpotlight and unit.reaction == "HOSTILE" and unit.isCasting then scale = LocalVars.ScaleSpotlight
 	--elseif LocalVars.ScaleMiniMobs and unit.isMini then
 	--	scale = MiniMobScale

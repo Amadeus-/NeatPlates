@@ -1,9 +1,10 @@
-## Interface: 110105
+## Interface: 110207, 120000, 120001
 ## Title: NeatPlates:|cffa335ee Renaitre|r
 ## Version: v7.0.3
 ## Notes: Renaitre's custom nameplates.
 ## Author: Renaitre
 ## Credits: Binbwen
+## Category: Appearance
 ## Dependencies: NeatPlates, NeatPlatesHub
 
 NeatPlates_Renaitre.lua

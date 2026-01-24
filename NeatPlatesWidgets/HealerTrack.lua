@@ -10,7 +10,17 @@
 		but it doesn't always work.  In addition, there are PvP encounters where
 		you're not in a battleground.
 
+	Note: Combat log method is disabled in 12.0.0+ (Midnight) due to API changes.
+	The scoreboard method continues to work.
+
 --]]
+
+-- Version check for 12.0.0+ (Midnight) - combat log parsing no longer works
+local isMidnight = select(4, GetBuildInfo()) >= 120000
+
+-- CombatLogGetCurrentEventInfo compatibility (moved to C_CombatLog namespace in 12.0.0)
+local CombatLogGetCurrentEventInfo = C_CombatLog and C_CombatLog.GetCurrentEventInfo or CombatLogGetCurrentEventInfo
+
 local RoleList = {}
 
 local function IsHealer(name)
@@ -306,6 +316,9 @@ function Events.UPDATE_BATTLEFIELD_SCORE()
 end
 
 function Events.COMBAT_LOG_EVENT_UNFILTERED()
+	-- Combat log parsing disabled in 12.0.0+ (Midnight) - API no longer provides spell details
+	if isMidnight then return end
+
 	-- Combat Log Unfiltered
 	local timestamp, combatevent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlag, spellid = CombatLogGetCurrentEventInfo()		-- WoW 8.0
 
@@ -332,7 +345,10 @@ local HealerTrackWatcher = CreateFrame("Frame")
 local function Enable()
 	--print("NeatPlatesWidgets.HealerTrack:Enable")
 	HealerTrackWatcher:SetScript("OnEvent", CombatEventHandler)
-	HealerTrackWatcher:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+	-- Combat log parsing disabled in 12.0.0+ (Midnight) - API no longer provides spell details
+	if not isMidnight then
+		HealerTrackWatcher:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+	end
 	HealerTrackWatcher:RegisterEvent("PLAYER_ENTERING_WORLD")
 	HealerTrackWatcher:RegisterEvent("UPDATE_BATTLEFIELD_SCORE")
 	WipeLists()

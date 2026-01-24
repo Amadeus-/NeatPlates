@@ -4,6 +4,11 @@ local PlayerClass = select(2, UnitClass("player"))
 local PlayerSpec = 0
 local TimerFont = "FONTS\\ARIALN.TTF"
 
+-- API compatibility wrappers for 12.0.0+
+local GetSpecialization = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization or GetSpecialization
+local GetSpecializationInfo = C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo or GetSpecializationInfo
+local GetSpecializationRole = C_SpecializationInfo and C_SpecializationInfo.GetSpecializationRole or GetSpecializationRole
+
 local validArtStyles = {
     ["Blizzard"] = true,
     ["Neat"] = true

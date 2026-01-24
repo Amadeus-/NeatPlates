@@ -6,6 +6,9 @@ NeatPlatesUtility = {}
 local _
 local L = LibStub("AceLocale-3.0"):GetLocale("NeatPlates")
 
+-- Compatibility wrapper for GetSpecialization (moved to C_SpecializationInfo in 12.0)
+local GetSpecialization = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization or GetSpecialization
+
 local copytable         -- Allows self-reference
 copytable = function(original)
 	local duplicate = {}
@@ -64,7 +67,7 @@ local function PartyMemberCount()
 end
 
 local function GetSpec()
-	return GetActiveSpecGroup()
+	return GetSpecialization() or 1
 end
 
 NeatPlatesUtility.GetNumRaidMembers = RaidMemberCount

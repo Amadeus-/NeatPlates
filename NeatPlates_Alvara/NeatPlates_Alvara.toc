@@ -1,8 +1,9 @@
-## Interface: 110105
+## Interface: 110207, 120000, 120001
 ## Title: NeatPlates: Alvara
 ## Notes: Made to Alvara's specifications. Very Simple.
 ## Author: Alvara - Zul'Jin
 ## Version: 5a
+## Category: Appearance
 ## Dependencies: NeatPlates, NeatPlatesHub
 
 NeatPlates_Alvara.lua

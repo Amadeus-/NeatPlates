@@ -112,6 +112,11 @@ local PlayerClass = select(2, UnitClass("player"))
 local playerSpec = 0
 local WidgetList = {}
 
+-- API compatibility wrappers for 12.0.0+
+local GetSpecialization = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization or GetSpecialization
+local GetSpecializationInfo = C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo or GetSpecializationInfo
+local GetSpecializationRole = C_SpecializationInfo and C_SpecializationInfo.GetSpecializationRole or GetSpecializationRole
+
 local function GetDKRunes()
 	local runeAmount = 0;
 	for i=1,6 do

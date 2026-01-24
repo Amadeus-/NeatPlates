@@ -10,8 +10,17 @@
 local LibClassicDurations
 local _UnitAura = UnitAura
 if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
-	_UnitAura = function(...)
-		return AuraUtil.UnpackAuraData(C_UnitAuras.GetAuraDataByIndex(...))
+	-- 12.0.0+: Access auraData fields directly instead of unpacking
+	-- AuraUtil.UnpackAuraData fails because fields may be SECRET values
+	_UnitAura = function(unit, index, filter)
+		local auraData = C_UnitAuras.GetAuraDataByIndex(unit, index, filter)
+		if not auraData then return nil end
+		-- Return fields directly from table (may be secret, but callers should handle that)
+		return auraData.name, auraData.icon, auraData.applications, auraData.dispelName,
+		       auraData.duration, auraData.expirationTime, auraData.sourceUnit,
+		       auraData.isStealable, auraData.nameplateShowPersonal, auraData.spellId,
+		       auraData.canApplyAura, auraData.isBossAura, auraData.isFromPlayerOrPlayerPet,
+		       auraData.nameplateShowAll
 	end
 end
 
@@ -24,6 +33,9 @@ if NEATPLATES_IS_CLASSIC_ERA then
 		_UnitAura = function() end
 	end
 end
+
+-- IsSpellKnown compatibility wrapper (deprecated in 12.0, moved to C_SpellBook)
+local IsSpellKnown = C_SpellBook and C_SpellBook.IsSpellKnown or IsSpellKnown
 
 NeatPlatesWidgets.DebuffWidgetBuild = 2
 
@@ -322,12 +334,15 @@ local function UpdateIconGrid(frame, unitid)
 				aura.unit = unitid 		-- unitid of the plate
 
 				-- Pandemic Base duration
-				if spellid and caster == "player" then
+				-- In 12.0.0+, caster (sourceUnit) and spellid can be secret values - check before comparing/indexing
+				local casterIsPlayer = not (issecretvalue and issecretvalue(caster)) and caster == "player"
+				local spellIdIsSecret = issecretvalue and issecretvalue(spellid)
+				if spellid and not spellIdIsSecret and casterIsPlayer then
 					if not AuraBaseDuration[spellid] or AuraBaseDuration[spellid] > duration then
 						AuraBaseDuration[spellid] = duration
 					end
 				end
-				aura.baseduration = AuraBaseDuration[spellid] or duration
+				aura.baseduration = (not spellIdIsSecret and AuraBaseDuration[spellid]) or duration
 			end
 
 			-- Gnaw , false, icon, 0 stacks, nil type, duration 1, expiration 8850.436, caster pet, false, false, 91800
@@ -337,13 +352,21 @@ local function UpdateIconGrid(frame, unitid)
 			if aura.name then
 				local show, priority, r, g, b, a = AuraFilterFunction(aura)
 				local emphasized, ePriority = EmphasizedAuraFilterFunction(aura)
-				local existing = AuraCache[unitid][aura.name]
+				-- In 12.0.0+, aura.name and aura.spellid can be secret values - check before using as table keys
+				local nameIsSecret = issecretvalue and issecretvalue(aura.name)
+				local spellIdIsSecret = issecretvalue and issecretvalue(aura.spellid)
+				local existing = not nameIsSecret and AuraCache[unitid][aura.name] or nil
 				show = show or emphasized -- Overwrite 'show' if 'emphasized' is true and 'show' is not true
 				--print(aura.name, show, priority)
 				--show = true
 
 				-- Used by Custom Color Conditions (Always overwrite if the aura isn't the players)
-				if not existing or existing.caster ~= "player" then AuraCache[unitid][aura.name], AuraCache[unitid][tostring(aura.spellid)] = aura, aura end
+				-- In 12.0.0+, caster (sourceUnit) can be a secret value - check before comparing
+				local existingCasterNotPlayer = not existing or (not (issecretvalue and issecretvalue(existing.caster)) and existing.caster ~= "player")
+				if existingCasterNotPlayer then
+					if not nameIsSecret then AuraCache[unitid][aura.name] = aura end
+					if not spellIdIsSecret then AuraCache[unitid][tostring(aura.spellid)] = aura end
+				end
 
 				-- Store Order/Priority
 				if show then
@@ -417,7 +440,10 @@ local function UpdateIconGrid(frame, unitid)
 				if (DebuffSlotCount+BuffSlotCount) > AuraLimit then break end
 				local aura = storedAuras[index]
 
-				if aura.spellid and aura.expiration and not(EmphasizedUnique and EmphasizedAura[tostring(aura.spellid)]) then
+				-- In 12.0.0+, aura.spellid can be a secret value - check before using as table key
+				local spellIdIsSecret = issecretvalue and issecretvalue(aura.spellid)
+				local isEmphasizedUnique = EmphasizedUnique and not spellIdIsSecret and EmphasizedAura[tostring(aura.spellid)]
+				if aura.spellid and aura.expiration and not isEmphasizedUnique then
 					-- Sort buffs and debuffs
 					if aura.effect == "HELPFUL" then
 						table.insert(BuffAuras, aura)
@@ -821,7 +847,11 @@ local function CreateAuraWidget(parent, style)
 		for index = 1, #auras do
 			if index > auraLimit then break end
 			shown = shown+1
-			ids[tostring(auras[index].spellid)] = true
+			-- In 12.0.0+, spellid can be a secret value - check before using as table key
+			local spellid = auras[index].spellid
+			if spellid and not (issecretvalue and issecretvalue(spellid)) then
+				ids[tostring(spellid)] = true
+			end
 			UpdateIcon(frame.AuraIconFrames[index], auras[index])
 		end
 

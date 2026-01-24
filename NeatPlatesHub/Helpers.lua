@@ -3,6 +3,64 @@
 -- Helpers
 ----------------------------------
 
+-- Version check for 12.0.0+ (Midnight) API changes
+local isMidnight = select(4, GetBuildInfo()) >= 120000
+
+-- Secret value helpers for 12.0.0+ (health/power can be secret values in combat)
+-- Use unit.healthSafe/unit.powermaxSafe etc. which are set in NeatPlatesCore
+-- These helpers are for backward compatibility and additional safety
+
+local function SafeNumber(value, fallback)
+	if isMidnight and issecretvalue and issecretvalue(value) then
+		return fallback or 0
+	end
+	return value or fallback or 0
+end
+
+-- Safe division that handles secret values - returns percentage as 0-1
+local function SafeHealthPercent(unit)
+	if isMidnight and issecretvalue then
+		if issecretvalue(unit.health) or issecretvalue(unit.healthmax) then
+			-- Fallback to safe cached values
+			if unit.healthSafe and unit.healthmaxSafe and unit.healthmaxSafe > 0 then
+				return unit.healthSafe / unit.healthmaxSafe
+			end
+			return 1 -- Default to full health if unknown
+		end
+	end
+	if unit.healthmax and unit.healthmax > 0 then
+		return unit.health / unit.healthmax
+	end
+	return 1
+end
+
+-- Safe comparison for health < healthmax (commonly used for "is damaged" checks)
+local function SafeIsDamaged(unit)
+	if isMidnight and issecretvalue then
+		if issecretvalue(unit.health) or issecretvalue(unit.healthmax) then
+			-- Use safe cached values
+			if unit.healthSafe and unit.healthmaxSafe then
+				return unit.healthSafe < unit.healthmaxSafe
+			end
+			return false -- Default to not damaged if unknown
+		end
+	end
+	return unit.health and unit.healthmax and unit.health < unit.healthmax
+end
+
+-- Safe health > 0 check
+local function SafeHasHealth(unit)
+	if isMidnight and issecretvalue then
+		if issecretvalue(unit.health) then
+			if unit.healthSafe then
+				return unit.healthSafe > 0
+			end
+			return true -- Default to has health if unknown
+		end
+	end
+	return unit.health and unit.health > 0
+end
+
 local function CallForStyleUpdate()
 
 	-- This happens when the Okay button is pressed, or a UI element is used
@@ -149,6 +207,12 @@ NeatPlatesHubHelpers.ConvertStringToTable = ConvertStringToTable
 NeatPlatesHubHelpers.ConvertAuraListTable = ConvertAuraListTable
 NeatPlatesHubHelpers.ConvertColorListTable = ConvertColorListTable
 NeatPlatesHubHelpers.AddHubFunction = AddHubFunction
+-- 12.0.0+ Secret value helpers
+NeatPlatesHubHelpers.SafeNumber = SafeNumber
+NeatPlatesHubHelpers.SafeHealthPercent = SafeHealthPercent
+NeatPlatesHubHelpers.SafeIsDamaged = SafeIsDamaged
+NeatPlatesHubHelpers.SafeHasHealth = SafeHasHealth
+NeatPlatesHubHelpers.isMidnight = isMidnight
 
 
 local function fromCSV (s)

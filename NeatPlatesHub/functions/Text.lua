@@ -27,6 +27,10 @@ local round = NeatPlatesUtility.round
 
 
 local AddHubFunction = NeatPlatesHubHelpers.AddHubFunction
+-- 12.0.0+ Secret value helpers
+local SafeHealthPercent = NeatPlatesHubHelpers.SafeHealthPercent
+local SafeIsDamaged = NeatPlatesHubHelpers.SafeIsDamaged
+local SafeNumber = NeatPlatesHubHelpers.SafeNumber
 
 local function DummyFunction() end
 
@@ -95,28 +99,33 @@ end
 
 local function TextFunctionMana(unit)
 	if (unit.isTarget or (LocalVars.FocusAsTarget and unit.isFocus)) then
-		local power = ceil((UnitPower("target") / UnitPowerMax("target"))*100)
+		local unitPower = UnitPower("target")
+		local unitPowerMax = UnitPowerMax("target")
+		-- Check for secret values before arithmetic (12.0.0+)
+		if issecretvalue and (issecretvalue(unitPower) or issecretvalue(unitPowerMax)) then
+			return nil
+		end
+		if unitPowerMax == 0 then return nil end
+		local power = ceil((unitPower / unitPowerMax)*100)
 		--local r, g, b = UnitPowerType("target")
-		--local powername = getglobal(select(2, UnitPowerType("target")))
+		--local powername = _G[select(2, UnitPowerType("target"))]
 		--if power and power > 0 then	return power.."% "..powername end
 		local powertype = select(2,UnitPowerType("target"))
 		local powercolor = PowerBarColor[powertype]
-		local powername = getglobal(powertype)
+		local powername = _G[powertype]
 		---print(power, powertype, powercolor, powercolor.r, powercolor.g, powercolor.b)
 		if power and power > 0 then return power.."% "..powername, powercolor.r, powercolor.g, powercolor.b, 1 end
 	end
 end
 
 local function GetHealth(unit)
-	--if unit.healthmaxCached then
-		return unit.health
-	--else return nil end
+	-- Use safe value for display to handle 12.0.0+ secret values
+	return SafeNumber(unit.health, unit.healthSafe or 0)
 end
 
 local function GetHealthMax(unit)
-	--if unit.healthmaxCached then
-		return unit.healthmax
-	--else return nil end
+	-- Use safe value for display to handle 12.0.0+ secret values
+	return SafeNumber(unit.healthmax, unit.healthmaxSafe or 1)
 end
 
 -- None
@@ -127,7 +136,8 @@ local function GetHealthPercent(unit)
 	local f = '1'
 	for i=precision,1,-1 do f = f..'0' end
 	f = tonumber(f)
-	local hpercent = 100*(unit.health/unit.healthmax) * f
+	-- Use SafeHealthPercent for 12.0.0+ secret value handling
+	local hpercent = 100 * SafeHealthPercent(unit) * f
 
 
 	return tonumber(string.format("%." .. (precision or 0) .. "f", ceil(hpercent) / f)) --Ceil to prevent health from showing as 0 while still being alive
@@ -143,13 +153,15 @@ local function TextHealthPercentColored(unit)
 end
 
 local function HealthFunctionPercent(unit)
-	if unit.health < unit.healthmax then
+	-- Use SafeIsDamaged for 12.0.0+ secret value handling
+	if SafeIsDamaged(unit) then
 		return TextHealthPercent(unit)
 	else return "" end
 end
 
 local function HealthFunctionPercentColored(unit)
-	if unit.health < unit.healthmax then
+	-- Use SafeIsDamaged for 12.0.0+ secret value handling
+	if SafeIsDamaged(unit) then
 		return TextHealthPercentColored(unit)
 	else return "" end
 end
@@ -282,14 +294,19 @@ local function HealthFunctionArenaID(unit)
 
 
 		if localid then
-			local power = ceil((UnitPower(localid) / UnitPowerMax(localid))*100)
-			local powerindex, powertype = UnitPowerType(localid)
+			local unitPower = UnitPower(localid)
+			local unitPowerMax = UnitPowerMax(localid)
+			-- Check for secret values before arithmetic (12.0.0+)
+			if not (issecretvalue and (issecretvalue(unitPower) or issecretvalue(unitPowerMax))) and unitPowerMax > 0 then
+				local power = ceil((unitPower / unitPowerMax)*100)
+				local powerindex, powertype = UnitPowerType(localid)
 
-			--local powername = getglobal(powertype)
+				--local powername = _G[powertype]
 
-			if power and power > 0 then
-				powerstring = "  "..power.."%"		--..powername
-				powercolor = PowerBarColor[powerindex] or HubData.Colors.White
+				if power and power > 0 then
+					powerstring = "  "..power.."%"		--..powername
+					powercolor = PowerBarColor[powerindex] or HubData.Colors.White
+				end
 			end
 		end
 	end
@@ -426,7 +443,8 @@ local function HealthTextDelegate(unit)
 	end
 
 	if LocalVars.TextShowOnlyOnActive then
-		if (unit.isMarked) or (unit.threatValue > 0) or (unit.health < unit.healthmax) then showText = true end
+		-- Use SafeIsDamaged for 12.0.0+ secret value handling
+		if (unit.isMarked) or (unit.threatValue > 0) or SafeIsDamaged(unit) then showText = true end
 	end
 
 	if showText then return func(unit) end
@@ -554,7 +572,8 @@ end
 local function TextAll(unit)
 	-- local color = ColorFunctionByHealth(unit) --6.0
 	local color = HubData.Colors.White
-	if unit.health < unit.healthmax then
+	-- Use SafeIsDamaged for 12.0.0+ secret value handling
+	if SafeIsDamaged(unit) then
 		return GetHealthPercent(unit).."%", color.r, color.g, color.b, .7
 	else
 		--return GetLevelDescription(unit) , unit.levelcolorRed, unit.levelcolorGreen, unit.levelcolorBlue, .7

@@ -443,12 +443,23 @@ local function GetPrefixPriority(aura, auraType)
 
 	local filter, priority
 
-	local spellid = tostring(aura.spellid)
+	local spellid = aura.spellid
 	local name = aura.name
+	-- Check if values are secret (12.0.0+ combat protection)
+	local nameIsSecret = issecretvalue and issecretvalue(name)
+	local spellIdIsSecret = issecretvalue and issecretvalue(spellid)
+
+	-- Convert spellid to string only if not secret
+	if not spellIdIsSecret and spellid then
+		spellid = tostring(spellid)
+	end
 
 	local function lookup(auraTable)
 		for i,a in pairs(auraTable) do
-			if (a.name == name or a.name == spellid) and auraType == a.type then
+			-- Skip comparisons if values are secret
+			local nameMatch = not nameIsSecret and a.name == name
+			local spellMatch = not spellIdIsSecret and a.name == spellid
+			if (nameMatch or spellMatch) and auraType == a.type then
 				return a.filter, i
 			end
 		end
@@ -462,8 +473,19 @@ local function GetPrefixPriority(aura, auraType)
 end
 
 local function GetAuraColor(aura)
-	local color = AURA_TYPE_COLORS[aura.type]
+	local auraType = aura.type
+	-- Check if auraType is a secret value (12.0.0+ combat protection)
+	if not auraType or (issecretvalue and issecretvalue(auraType)) then
+		return nil
+	end
+	local color = AURA_TYPE_COLORS[auraType]
 	if color then return unpack(color) end
+end
+
+-- Helper function to safely check if caster matches a value (handles 12.0.0+ secret values)
+local function CasterMatches(caster, value)
+	if issecretvalue and issecretvalue(caster) then return false end
+	return caster == value
 end
 
 local DebuffPrefixModes = {
@@ -471,7 +493,7 @@ local DebuffPrefixModes = {
 		return true
 	end,
 	["my"] = function(aura)
-		if aura.caster == "player" or aura.caster == "pet" then return true end
+		if CasterMatches(aura.caster, "player") or CasterMatches(aura.caster, "pet") then return true end
 	end,
 	-- ["other"] = function(aura)
 	-- 	--print(aura.caster, aura.name)
@@ -496,7 +518,7 @@ local function SmartFilterMode(aura)
 	end
 
 	-- My own Buffs and Debuffs
-	if (aura.caster == "player" or aura.caster == "pet") and aura.baseduration and aura.baseduration < 150 then
+	if (CasterMatches(aura.caster, "player") or CasterMatches(aura.caster, "pet")) and aura.baseduration and aura.baseduration < 150 then
 		if (LocalVars.WidgetBuffFilter == 2 and aura.effect == "HELPFUL") or (LocalVars.WidgetDebuffFilter == 2 and aura.effect == "HARMFUL") then
 			ShowThisAura = true
 		end
@@ -545,26 +567,32 @@ local DispelTypeHandlers = {
 	}
 
 local function TrackDispelType(dispelType)
-	if dispelType then
-		local handlerfunction = DispelTypeHandlers[dispelType]
-		if handlerfunction then return handlerfunction() end
+	-- Check if dispelType is a secret value (12.0.0+ combat protection)
+	if not dispelType or (issecretvalue and issecretvalue(dispelType)) then
+		return nil
 	end
+	local handlerfunction = DispelTypeHandlers[dispelType]
+	if handlerfunction then return handlerfunction() end
 end
 
 local function DebuffFilter(aura)
+	-- Get aura type safely (may be secret value in 12.0.0+)
+	local auraType = aura.type
+	local auraTypeIsSecret = issecretvalue and issecretvalue(auraType)
+
 	-- Purgeable Buff
-	if LocalVars.WidgetBuffPurgeable and aura.effect == "HELPFUL" and aura.type == "Magic" and aura.reaction == 1 then
+	if LocalVars.WidgetBuffPurgeable and aura.effect == "HELPFUL" and (not auraTypeIsSecret and auraType == "Magic") and aura.reaction == 1 then
 		local color = LocalVars.ColorBuffPurgeable
 		return true, 10, color.r, color.g, color.b, color.a
 	end
 	-- Sootheable Enrage Buff
-	if LocalVars.WidgetBuffEnrage and aura.effect == "HELPFUL" and aura.type == "" and aura.reaction == 1 then
+	if LocalVars.WidgetBuffEnrage and aura.effect == "HELPFUL" and (not auraTypeIsSecret and auraType == "") and aura.reaction == 1 then
 		local color = LocalVars.ColorBuffEnrage
 		return true, 10, color.r, color.g, color.b, color.a
 	end
 	-- Dispellable Debuff
 	if (LocalVars.WidgetAuraTrackDispelFriendly and aura.reaction == AURA_TARGET_FRIENDLY) then
-		if (aura.effect == "HARMFUL" and TrackDispelType(aura.type)) then
+		if (aura.effect == "HARMFUL" and TrackDispelType(auraType)) then
 			local r, g, b = GetAuraColor(aura)
 			return true, 10, r, g, b, a
 		end

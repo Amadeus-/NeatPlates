@@ -1,10 +1,12 @@
-## Interface: 110105
+## Interface: 11507, 20504, 30404, 40402, 50500, 120000, 120001
 ## Title: NeatPlates
 ## Notes: Enjoys long walks on Darkshore
 ## Author: Luxocracy and friends
-## Version: @project-version@
+## Version: v468
+## Category: Appearance
 ## SavedVariables: NeatPlatesSettings
 ## SavedVariablesPerCharacter: NeatPlatesOptions
+## IconTexture: Interface\Icons\Spell_Nature_WispSplode
 
 temporary-because-blizzard-forgot-an-include.xml
 embeds.xml

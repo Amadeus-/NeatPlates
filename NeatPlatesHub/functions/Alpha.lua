@@ -16,6 +16,10 @@ local IsAuraShown = function() return false end
 local UnitFilter = NeatPlatesHubFunctions.UnitFilter
 local IsPartyMember = NeatPlatesUtility.IsPartyMember
 local function DummyFunction() end
+-- 12.0.0+ Secret value helpers
+local SafeHealthPercent = NeatPlatesHubHelpers.SafeHealthPercent
+local SafeIsDamaged = NeatPlatesHubHelpers.SafeIsDamaged
+local SafeHasHealth = NeatPlatesHubHelpers.SafeHasHealth
 
 ------------------------------------------------------------------------------
 -- Opacity / Alpha
@@ -23,13 +27,15 @@ local function DummyFunction() end
 
 -- By Low Health
 local function AlphaFunctionByLowHealth(unit)
-	if unit.health/unit.healthmax < LocalVars.LowHealthThreshold then return LocalVars.OpacitySpotlight end
+	-- Use SafeHealthPercent for 12.0.0+ secret value handling
+	if SafeHealthPercent(unit) < LocalVars.LowHealthThreshold then return LocalVars.OpacitySpotlight end
 end
 
 -- By Threat (High)
 local function AlphaFunctionByThreatHigh (unit)
 	if InCombatLockdown() and unit.reaction ~= "FRIENDLY" then
-		if unit.threatValue > 1 and unit.health > 0 then return LocalVars.OpacitySpotlight end
+		-- Use SafeHasHealth for 12.0.0+ secret value handling
+		if unit.threatValue > 1 and SafeHasHealth(unit) then return LocalVars.OpacitySpotlight end
 	elseif LocalVars.ColorShowPartyAggro and unit.reaction == "FRIENDLY" then
 		if GetFriendlyThreat(unit.unitid) then return LocalVars.OpacitySpotlight end
 	end
@@ -39,7 +45,8 @@ end
 local function AlphaFunctionByThreatLow (unit)
 	if InCombatLockdown() and unit.reaction ~= "FRIENDLY" then
 		if IsOffTanked(unit) then return end
-		if unit.threatValue < 2 and unit.health > 0 then return LocalVars.OpacitySpotlight end
+		-- Use SafeHasHealth for 12.0.0+ secret value handling
+		if unit.threatValue < 2 and SafeHasHealth(unit) then return LocalVars.OpacitySpotlight end
 	elseif LocalVars.ColorShowPartyAggro and unit.reaction == "FRIENDLY" then
 		if GetFriendlyThreat(unit.unitid) then return LocalVars.OpacitySpotlight end
 	end
@@ -62,11 +69,13 @@ local function AlphaFunctionByRaidIcon(unit)
 end
 
 local function AlphaFunctionByActive(unit)
-	if (unit.health < unit.healthmax) or (unit.threatValue > 1) or unit.isInCombat or unit.isMarked then return LocalVars.OpacitySpotlight end
+	-- Use SafeIsDamaged for 12.0.0+ secret value handling
+	if SafeIsDamaged(unit) or (unit.threatValue > 1) or unit.isInCombat or unit.isMarked then return LocalVars.OpacitySpotlight end
 end
 
 local function AlphaFunctionByDamaged(unit)
-	if (unit.health < unit.healthmax) or unit.isMarked then return LocalVars.OpacitySpotlight end
+	-- Use SafeIsDamaged for 12.0.0+ secret value handling
+	if SafeIsDamaged(unit) or unit.isMarked then return LocalVars.OpacitySpotlight end
 end
 
 local function AlphaFunctionByActiveAuras(unit)

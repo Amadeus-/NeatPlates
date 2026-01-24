@@ -3,6 +3,20 @@ NeatPlatesWidgetSettings = {
 	RaidTankList = {}
 }
 
+-- 12.0.0 API compatibility wrappers
+local CombatLogGetCurrentEventInfo = C_CombatLog and C_CombatLog.GetCurrentEventInfo or CombatLogGetCurrentEventInfo
+local GetSpecializationRole = C_SpecializationInfo and C_SpecializationInfo.GetSpecializationRole or GetSpecializationRole
+
+-- UnitBuff deprecation compatibility - returns spellId from buff at index
+local function GetBuffSpellId(unit, index)
+	if C_UnitAuras and C_UnitAuras.GetBuffDataByIndex then
+		local auraData = C_UnitAuras.GetBuffDataByIndex(unit, index)
+		return auraData and auraData.spellId
+	else
+		return select(10, UnitBuff(unit, index))
+	end
+end
+
 local function _IsEquippedItemType(type)
 	local result
 	if C_Item and C_Item.IsEquippedItemType then
@@ -101,7 +115,7 @@ local function HasClassicTankAura()
 	elseif playerClass == "PALADIN" then
 		-- Righteous Fury
 		for i=1,40 do
-			local spellId = select(10, UnitBuff("player",i))
+			local spellId = GetBuffSpellId("player", i)
 			if rfSpellId[spellId] then
 				return true
 			end
@@ -117,7 +131,7 @@ local function HasClassicTankAura()
 	elseif playerClass == "SHAMAN" then
 		-- SoD: Way of Earth
 		for i=1,40 do
-			local spellId = select(10, UnitBuff("player", i))
+			local spellId = GetBuffSpellId("player", i)
 			if woeSpellId == spellId then
 				return true
 			end

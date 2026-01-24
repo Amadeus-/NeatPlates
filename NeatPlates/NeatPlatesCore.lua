@@ -16,6 +16,31 @@ if NEATPLATES_IS_CLASSIC then
 	UnitEffectiveLevel = UnitLevel
 end
 
+-- Version check for 12.0.0+ (Midnight) API changes
+local isMidnight = select(4, GetBuildInfo()) >= 120000
+
+-- Secret value helper for 12.0.0+ (health/power can be secret values in combat)
+-- Returns the numeric value if safe, or the fallback if it's a secret value
+local function SafeNumber(value, fallback)
+	if isMidnight and issecretvalue and issecretvalue(value) then
+		return fallback or 0
+	end
+	return value or fallback or 0
+end
+
+-- Safe comparison for secret values - returns false if either operand is secret
+local function SafeCompareEqual(a, b)
+	if isMidnight and issecretvalue then
+		if issecretvalue(a) or issecretvalue(b) then
+			return false
+		end
+	end
+	return a == b
+end
+
+-- CombatLogGetCurrentEventInfo compatibility (moved to C_CombatLog namespace in 12.0.0)
+local CombatLogGetCurrentEventInfo = C_CombatLog and C_CombatLog.GetCurrentEventInfo or CombatLogGetCurrentEventInfo
+
 -- Local References
 local _
 local max = math.max
@@ -25,16 +50,41 @@ local select, pairs, tostring  = select, pairs, tostring 			    -- Local functio
 local CreateNeatPlatesStatusbar = CreateNeatPlatesStatusbar			    -- Local function copy
 local WorldFrame, UIParent = WorldFrame, UIParent
 local GetNamePlateForUnit = C_NamePlate.GetNamePlateForUnit
-local SetNamePlateFriendlySize = function(x,y)
-	if NameplateNoStackingFriendly then
-		y = 1
-		if not NameplateNoStackingFriendlyKeepWidth then
-			x = 1
+-- Nameplate size functions (API changed in 12.0.0 - SetNamePlateFriendlySize/SetNamePlateEnemySize
+-- were replaced with unified SetNamePlateSize)
+local SetNamePlateFriendlySize, SetNamePlateEnemySize
+
+if C_NamePlate.SetNamePlateFriendlySize then
+	-- Pre-12.0.0: Use separate friendly/enemy size functions
+	SetNamePlateFriendlySize = function(x,y)
+		if NameplateNoStackingFriendly then
+			y = 1
+			if not NameplateNoStackingFriendlyKeepWidth then
+				x = 1
+			end
+		end
+		C_NamePlate.SetNamePlateFriendlySize(x,y)
+	end
+	SetNamePlateEnemySize = C_NamePlate.SetNamePlateEnemySize
+else
+	-- 12.0.0+: Use unified SetNamePlateSize (applies to all nameplates)
+	-- Note: In 12.0.0, friendly and enemy nameplates share the same size
+	local function SetUnifiedSize(x, y)
+		if C_NamePlate.SetNamePlateSize then
+			C_NamePlate.SetNamePlateSize(x, y)
 		end
 	end
-	C_NamePlate.SetNamePlateFriendlySize(x,y)
+	SetNamePlateFriendlySize = function(x,y)
+		if NameplateNoStackingFriendly then
+			y = 1
+			if not NameplateNoStackingFriendlyKeepWidth then
+				x = 1
+			end
+		end
+		SetUnifiedSize(x, y)
+	end
+	SetNamePlateEnemySize = SetUnifiedSize
 end
-local SetNamePlateEnemySize = C_NamePlate.SetNamePlateEnemySize
 
 -- Internal Data
 local Plates, PlatesVisible, PlatesFading, GUID = {}, {}, {}, {}	         	-- Plate Lists
@@ -352,8 +402,10 @@ local function UpdateNameplateSize(plate, show, cWidth, cHeight)
 			if IsInInstance() or DisplayingBlizzardPlate(plate) then
 				-- Reset to blizzard nameplate default to avoid issues while diplaying default blizzard nameplate
 				-- NOTE: This means the 'Force Default Nameplates' option will still have this issue in some cases, but it's a much better than currently
-				local zeroBasedScale = tonumber(GetCVar("NamePlateVerticalScale")) - 1.0;
-				local horizontalScale = tonumber(GetCVar("NamePlateHorizontalScale"));
+				local verticalScaleCVar = GetCVar("NamePlateVerticalScale")
+				local horizontalScaleCVar = GetCVar("NamePlateHorizontalScale")
+				local zeroBasedScale = verticalScaleCVar and (tonumber(verticalScaleCVar) - 1.0) or 0.0
+				local horizontalScale = horizontalScaleCVar and tonumber(horizontalScaleCVar) or 1.0
 				if NEATPLATES_IS_CLASSIC then
 					SetNamePlateFriendlySize(128 * horizontalScale, 45 * Lerp(1.0, 1.25, zeroBasedScale))
 				else
@@ -805,8 +857,11 @@ do
 
 			for key, value in pairs(unit) do
 				if unitchanged then break end
-				if unitcache[key] ~= value then
-					unitchanged = true
+				-- Skip secret value fields that can't be compared in 12.0.0+
+				if not (issecretvalue and issecretvalue(value)) then
+					if unitcache[key] ~= value then
+						unitchanged = true
+					end
 				end
 			end
 
@@ -1122,13 +1177,25 @@ do
 		unit.reaction = GetReactionByColor(unit.red, unit.green, unit.blue) or "HOSTILE"
 		-- unit.reaction = GetReactionByUnit(unit) or "HOSTILE"
 
+		-- Health and power can be secret values in 12.0.0+ during combat
+		-- Store raw values for use with secure status bars, but also store safe versions for comparisons
 		unit.health = UnitHealth(unitid) or 0
 		unit.healthmax = UnitHealthMax(unitid) or 0
-		if unit.healthmax == 0 then unit.healthmax = 1 end
+		-- Safe versions for comparisons (avoids secret value errors)
+		unit.healthSafe = SafeNumber(unit.health, 0)
+		unit.healthmaxSafe = SafeNumber(unit.healthmax, 1)
+		if unit.healthmaxSafe == 0 then unit.healthmaxSafe = 1 end
+		-- Also fix raw healthmax to avoid division by zero when not a secret value
+		if not (isMidnight and issecretvalue and issecretvalue(unit.healthmax)) and unit.healthmax == 0 then
+			unit.healthmax = 1
+		end
 
 		local powerType = UnitPowerType(unitid) or 0
 		unit.power = UnitPower(unitid, powerType) or 0
 		unit.powermax = UnitPowerMax(unitid, powerType) or 0
+		-- Safe versions for comparisons
+		unit.powerSafe = SafeNumber(unit.power, 0)
+		unit.powermaxSafe = SafeNumber(unit.powermax, 0)
 
 		unit.threatValue = 0
 		if ThreatSoloEnable or UnitInParty("player") or UnitExists("pet") then
@@ -1185,27 +1252,40 @@ do
 
 	-- UpdateIndicator_HealthBar: Updates the value on the health bar
 	function UpdateIndicator_HealthBar()
+		-- In 12.0.0+, health values can be "secret values" that can't be used in arithmetic.
+		-- The native StatusBar widget accepts secret values directly (SecretArguments = "AllowedWhenTainted").
+		-- Our custom statusbar now has a hidden native StatusBar that handles secrets,
+		-- and syncs the fill to our custom texture via OnValueChanged.
+		-- Just pass the values directly - SetMinMaxValues and SetValue will route to native bar if needed.
 		visual.healthbar:SetMinMaxValues(0, unit.healthmax)
 		visual.healthbar:SetValue(unit.health)
+
 		-- Subtext
 		UpdateIndicator_Subtext()
 	end
 
 	-- UpdateIndicator_PowerBar: Updates the value on the resource/power bar
 	function UpdateIndicator_PowerBar()
+		-- In 12.0.0+, power values can be "secret values" that can't be used in arithmetic.
+		-- The native StatusBar widget accepts secret values directly (SecretArguments = "AllowedWhenTainted").
+		-- Our custom statusbar now has a hidden native StatusBar that handles secrets,
+		-- and syncs the fill to our custom texture via OnValueChanged.
+		-- Just pass the values directly - SetMinMaxValues and SetValue will route to native bar if needed.
 		visual.powerbar:SetMinMaxValues(0, unit.powermax)
 		visual.powerbar:SetValue(unit.power)
 
 		-- Hide bar if max power is none as the unit doesn't use power
+		-- Use safe versions of power values for comparisons (12.0.0+ secret value handling)
 		local showPowerBar = (ShowFriendlyPowerBar and unit.reaction == "FRIENDLY") or (ShowEnemyPowerBar and unit.reaction ~= "FRIENDLY")
-		if unit.powermax == 0 or not showPowerBar then
+		if unit.powermaxSafe == 0 or not showPowerBar then
 			visual.powerbar:Hide()
 		elseif showPowerBar then
 			visual.powerbar:Show()
 		end
 
 		-- Fixes issue with small sliver being displayed even at 0
-		if unit.power == 0 then
+		-- Use safe version of power for comparison (12.0.0+ secret value handling)
+		if unit.powerSafe == 0 then
 			visual.powerbar.Bar:Hide()
 		else
 			visual.powerbar.Bar:Show()
@@ -1444,7 +1524,8 @@ do
 	function UpdateIndicator_CustomScaleText()
 		threatborder = visual.threatborder
 
-		if unit.health and (extended.requestedAlpha > 0) then
+		-- Use healthSafe for the existence check to handle 12.0.0+ secret values
+		if unit.healthSafe and (extended.requestedAlpha > 0) then
 			-- Scale
 			if activetheme.SetScale then
 				scale = activetheme.SetScale(unit)
@@ -1535,8 +1616,14 @@ do
 		unit.isCasting = true
 		unit.interrupted = false
 		unit.interruptLogged = false
-		unit.spellIsShielded = notInterruptible
-		unit.spellInterruptible = not unit.spellIsShielded
+		-- Handle notInterruptible being a SECRET value in 12.0.0+
+		if issecretvalue and issecretvalue(notInterruptible) then
+			unit.spellIsShielded = false
+			unit.spellInterruptible = true
+		else
+			unit.spellIsShielded = notInterruptible
+			unit.spellInterruptible = not notInterruptible
+		end
 
 		-- Clear registered events incase they weren't
 		castBar:SetScript("OnEvent", nil)
@@ -1835,6 +1922,10 @@ do
 	end
 
 	function CoreEvents:COMBAT_LOG_EVENT_UNFILTERED(...)
+		-- In 12.0.0+ (Midnight), COMBAT_LOG_EVENT_UNFILTERED is restricted to damage meter addons only.
+		-- Skip processing entirely on Midnight clients - interrupt display still works via UNIT_SPELLCAST_INTERRUPTED.
+		if isMidnight then return end
+
 		local _,event,_,sourceGUID,sourceName,sourceFlags,_,destGUID,destName,_,_,spellID,spellName,spellSchool = CombatLogGetCurrentEventInfo()
 		spellID = spellID or ""
 		local plate = nil
@@ -1944,7 +2035,15 @@ do
 	-- Registration of Blizzard Events
 	NeatPlatesCore:SetFrameStrata("TOOLTIP") 	-- When parented to WorldFrame, causes OnUpdate handler to run close to last
 	NeatPlatesCore:SetScript("OnEvent", EventHandler)
-	for eventName in pairs(CoreEvents) do NeatPlatesCore:RegisterEvent(eventName) end
+	for eventName in pairs(CoreEvents) do
+		-- Skip COMBAT_LOG_EVENT_UNFILTERED on 12.0.0+ (Midnight) - it's restricted to damage meter addons only.
+		-- Interrupt display still works via UNIT_SPELLCAST_INTERRUPTED which is registered per-unit.
+		if isMidnight and eventName == "COMBAT_LOG_EVENT_UNFILTERED" then
+			-- Skip registration - this event would error or not provide useful data in Midnight
+		else
+			NeatPlatesCore:RegisterEvent(eventName)
+		end
+	end
 	-- NeatPlatesCore:RegisterAllEvents() --Debugging
 
 end

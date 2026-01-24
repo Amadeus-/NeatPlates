@@ -5,6 +5,8 @@ local LocalVars = NeatPlatesHubDefaults
 local GetUnitSubtitle = NeatPlatesUtility.GetUnitSubtitle
 local GetUnitQuestInfo = NeatPlatesUtility.GetUnitQuestInfo
 local IsPartyMember = NeatPlatesUtility.IsPartyMember
+-- 12.0.0+ Secret value helpers
+local SafeIsDamaged = NeatPlatesHubHelpers.SafeIsDamaged
 
 ------------------------------------------------------------------------------
 -- Unit Filter
@@ -28,7 +30,8 @@ local function UnitFilter(unit)
 		if next(GetUnitQuestInfo(unit)) ~= nil then return false end
 
 		if unit.reaction ~= "FRIENDLY" then
-			if not (unit.isMarked or unit.isInCombat or unit.threatValue > 0 or unit.health < unit.healthmax) then
+			-- Use SafeIsDamaged for 12.0.0+ secret value handling
+			if not (unit.isMarked or unit.isInCombat or unit.threatValue > 0 or SafeIsDamaged(unit)) then
 				return true
 			end
 		end

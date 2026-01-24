@@ -1,6 +1,9 @@
-## Interface: 110105
+## Interface: 11507, 20504, 30404, 40402, 50500, 120000, 120001
 ## Title: NeatPlates Widgets
 ## Notes: Library of Widgets
+## Author: Luxocracy and friends
+## Version: v468
+## Category: Appearance
 ## Dependencies: NeatPlates
 
 Widgets.xml

@@ -1,7 +1,8 @@
-## Interface: 110105
+## Interface: 110207, 120000, 120001
 ## Title: NeatPlates: Roth
 ## Notes: Vanilla-Style Plates.
 ## Author: Reinhart
+## Category: Appearance
 ## Dependencies: NeatPlates, NeatPlatesHub
 
 NeatPlates_Roth.lua

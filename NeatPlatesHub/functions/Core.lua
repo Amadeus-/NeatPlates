@@ -451,10 +451,15 @@ end
 local function ValidateCombatRestrictedSettings()
 	local CombatLockdown = InCombatLockdown()
 	local time = GetTime()
-	local settings = {
-		["StyleEnemyBarsClickThrough"] = C_NamePlate.GetNamePlateEnemyClickThrough(),
-		["StyleFriendlyBarsClickThrough"] = C_NamePlate.GetNamePlateFriendlyClickThrough(),
-	}
+	local settings = {}
+
+	-- These APIs were removed in WoW 12.0.0
+	if C_NamePlate.GetNamePlateEnemyClickThrough then
+		settings["StyleEnemyBarsClickThrough"] = C_NamePlate.GetNamePlateEnemyClickThrough()
+	end
+	if C_NamePlate.GetNamePlateFriendlyClickThrough then
+		settings["StyleFriendlyBarsClickThrough"] = C_NamePlate.GetNamePlateFriendlyClickThrough()
+	end
 
 	if CombatLockdown then
 		-- Loop through affected settings to see if any of them were change, if so trigger a warning that they weren't applied correctly
@@ -504,9 +509,14 @@ local function ApplyProfileSettings(theme, source, ...)
 	NeatPlates:SetCoreVariables(LocalVars)
 
 	-- Manage ClickThrough option of nameplate bars.
+	-- These APIs were removed in WoW 12.0.0
 	if ValidateCombatRestrictedSettings() then
-		C_NamePlate.SetNamePlateFriendlyClickThrough(LocalVars.StyleFriendlyBarsClickThrough or false)
-		C_NamePlate.SetNamePlateEnemyClickThrough(LocalVars.StyleEnemyBarsClickThrough or false)
+		if C_NamePlate.SetNamePlateFriendlyClickThrough then
+			C_NamePlate.SetNamePlateFriendlyClickThrough(LocalVars.StyleFriendlyBarsClickThrough or false)
+		end
+		if C_NamePlate.SetNamePlateEnemyClickThrough then
+			C_NamePlate.SetNamePlateEnemyClickThrough(LocalVars.StyleEnemyBarsClickThrough or false)
+		end
 	end
 
 	NeatPlates.UpdateNameplateSize() -- Set/Update nameplate size

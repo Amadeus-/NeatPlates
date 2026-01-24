@@ -1,7 +1,9 @@
-## Interface: 110105
+## Interface: 11507, 20504, 30404, 40402, 50500, 120000, 120001
 ## Title: NeatPlates Hub
 ## Notes: Provides a common configuration panel for supported themes.
 ## Author: Luxocracy and friends
+## Version: v468
+## Category: Appearance
 ## Dependencies: NeatPlates, NeatPlatesWidgets
 ## OptionalDeps: NeatPlatesHubDE, NeatPlatesHubES, NeatPlatesHubMX, NeatPlatesHubFR, NeatPlatesHubKR, NeatPlatesHubRU, NeatPlatesHubCN, NeatPlatesHubTW
 ## SavedVariables: NeatPlatesHubSettings
