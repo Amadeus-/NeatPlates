@@ -422,14 +422,6 @@ local function UpdateNameplateSize(plate, show, cWidth, cHeight)
 			plate.extended.visual.hitbox:SetHeight(hitbox.height)
 
 			if show then plate.extended.visual.hitbox:Show() else plate.extended.visual.hitbox:Hide() end
-
-			-- WoW 12.0.0+ (Midnight): Update the hit test frame position and size
-			-- The hit test frame must match the clickable area for proper targeting
-			if plate.NeatPlatesHitTestFrame then
-				plate.NeatPlatesHitTestFrame:ClearAllPoints()
-				plate.NeatPlatesHitTestFrame:SetPoint("CENTER", plate, "CENTER")
-				plate.NeatPlatesHitTestFrame:SetSize(hitbox.width, hitbox.height)
-			end
 		end
 
 	end)
@@ -734,15 +726,6 @@ do
 
 		carrier:SetPoint("CENTER", plate, "CENTER")
 
-		-- WoW 12.0.0+ (Midnight): Create a hit test frame for click targeting
-		-- In 12.0, Blizzard changed nameplate click handling to use C_NamePlateManager.SetNamePlateHitTestFrame
-		-- The hit test frame must be parented to the actual nameplate base frame (not the carrier/WorldFrame)
-		if isMidnight and C_NamePlateManager and C_NamePlateManager.SetNamePlateHitTestFrame then
-			local hitTestFrame = CreateFrame("Frame", nil, plate)
-			hitTestFrame:SetAllPoints(plate)  -- Will be repositioned in UpdateNameplateSize
-			plate.NeatPlatesHitTestFrame = hitTestFrame
-		end
-
 		UpdateNameplateSize(plate)
 	end
 
@@ -986,15 +969,6 @@ do
 
 		-- Register events
 		RegisterNameplateEvents(plate, unitid)
-
-		-- WoW 12.0.0+ (Midnight): Attempt to register our hit test frame with the C++ nameplate manager
-		-- Note: The primary fix for 12.0 click targeting is using SetAlpha(0) instead of Hide() on the UnitFrame
-		-- This keeps Blizzard's HitTestFrame visible and functional. Our custom frame is an optional optimization
-		-- that may allow better click area matching with NeatPlates visuals if the API call succeeds.
-		if isMidnight and C_NamePlateManager and C_NamePlateManager.SetNamePlateHitTestFrame and plate.NeatPlatesHitTestFrame then
-			pcall(C_NamePlateManager.SetNamePlateHitTestFrame, unitid, plate.NeatPlatesHitTestFrame)
-			-- If this fails, no worries - the Blizzard HitTestFrame will still work via SetAlpha(0) approach
-		end
 
 	end
 
