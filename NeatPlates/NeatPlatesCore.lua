@@ -19,6 +19,16 @@ end
 -- Version check for 12.0.0+ (Midnight) API changes
 local isMidnight = select(4, GetBuildInfo()) >= 120000
 
+-- Create our own ScaleTo100 curve for use with UnitHealthPercent/UnitPowerPercent
+-- This is used when CurveConstants.ScaleTo100 might not be available yet
+local NeatPlatesScaleTo100Curve
+if isMidnight and C_CurveUtil and C_CurveUtil.CreateCurve and Enum and Enum.LuaCurveType then
+	NeatPlatesScaleTo100Curve = C_CurveUtil.CreateCurve()
+	NeatPlatesScaleTo100Curve:SetType(Enum.LuaCurveType.Linear)
+	NeatPlatesScaleTo100Curve:AddPoint(0.0, 0)
+	NeatPlatesScaleTo100Curve:AddPoint(1.0, 100)
+end
+
 -- Secret value helper for 12.0.0+ (health/power can be secret values in combat)
 -- Returns the numeric value if safe, or the fallback if it's a secret value
 local function SafeNumber(value, fallback)
@@ -1217,6 +1227,13 @@ do
 		if not (isMidnight and issecretvalue and issecretvalue(unit.healthmax)) and unit.healthmax == 0 then
 			unit.healthmax = 1
 		end
+		-- Store health percentage for comparisons and bar width calculations
+		-- In 12.0.0+, UnitHealthPercent returns a SECRET value that cannot be used in arithmetic.
+		-- The safe values (healthSafe/healthmaxSafe) are non-secret and can be used for comparisons.
+		unit.healthPercent = unit.healthmaxSafe > 0 and (unit.healthSafe / unit.healthmaxSafe) or 1
+
+		-- 12.0.0+ health text display is handled via SetFormattedText in the display code
+		-- (NeatPlatesHub/functions/Text.lua sets unit.healthTextFormat/Value for SetFormattedText)
 
 		local powerType = UnitPowerType(unitid) or 0
 		unit.power = UnitPower(unitid, powerType) or 0
@@ -1371,7 +1388,20 @@ do
 		-- Subtext
 		if style.subtext.show and style.subtext.enabled and activetheme.SetSubText then
 				local text, r, g, b, a = activetheme.SetSubText(unit)
-				visual.subtext:SetText(text or "")
+				-- 12.0.0+: Check for format data to use SetFormattedText with secret values
+				if unit.healthTextFormat and unit.healthTextValue then
+					if unit.healthTextComposite then
+						visual.subtext:SetFormattedText(unit.healthTextFormat, unit.healthTextPrefix or "", unit.healthTextValue)
+					else
+						visual.subtext:SetFormattedText(unit.healthTextFormat, unit.healthTextValue)
+					end
+					unit.healthTextFormat = nil
+					unit.healthTextValue = nil
+					unit.healthTextPrefix = nil
+					unit.healthTextComposite = nil
+				else
+					visual.subtext:SetText(text or "")
+				end
 				visual.subtext:SetTextColor(r or 1, g or 1, b or 1, a or 1)
 		else visual.subtext:SetText("") end
 	end
@@ -1616,7 +1646,23 @@ do
 			if style.customtext.show and style.customtext.enabled then
 				if activetheme.SetCustomText and unit.unitid then
 					local text, r, g, b, a = activetheme.SetCustomText(unit)
-					visual.customtext:SetText( text or "")
+					-- 12.0.0+: Check for format data to use SetFormattedText with secret values
+					if unit.healthTextFormat and unit.healthTextValue then
+						if unit.healthTextComposite then
+							-- Composite format like "%s  (%.0f%%)" with prefix and percent
+							visual.customtext:SetFormattedText(unit.healthTextFormat, unit.healthTextPrefix or "", unit.healthTextValue)
+						else
+							-- Simple format like "%.0f%%" with just percent
+							visual.customtext:SetFormattedText(unit.healthTextFormat, unit.healthTextValue)
+						end
+						-- Clear format data after use
+						unit.healthTextFormat = nil
+						unit.healthTextValue = nil
+						unit.healthTextPrefix = nil
+						unit.healthTextComposite = nil
+					else
+						visual.customtext:SetText(text or "")
+					end
 					visual.customtext:SetTextColor(r or 1, g or 1, b or 1, a or 1)
 				else visual.customtext:SetText("") end
 			end

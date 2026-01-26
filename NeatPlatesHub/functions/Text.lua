@@ -32,7 +32,59 @@ local SafeHealthPercent = NeatPlatesHubHelpers.SafeHealthPercent
 local SafeIsDamaged = NeatPlatesHubHelpers.SafeIsDamaged
 local SafeNumber = NeatPlatesHubHelpers.SafeNumber
 
+-- 12.0.0+ API availability check
+local UnitHealthPercentAPI = UnitHealthPercent
+local CurveConstantsRef = CurveConstants
+
 local function DummyFunction() end
+
+-- Helper to set format data on unit for secret value display via SetFormattedText
+-- Returns true if format data was set (caller should return nil for text)
+local function SetHealthPercentFormat(unit, formatStr, prefix, suffix)
+    if not UnitHealthPercentAPI or not unit.unitid then return false end
+    local percent = UnitHealthPercentAPI(unit.unitid, false, CurveConstantsRef and CurveConstantsRef.ScaleTo100 or nil)
+    if percent and (issecretvalue and issecretvalue(percent)) then
+        -- Store format data for NeatPlatesCore to use with SetFormattedText
+        unit.healthTextFormat = formatStr
+        unit.healthTextValue = percent
+        unit.healthTextPrefix = prefix or ""
+        unit.healthTextSuffix = suffix or ""
+        return true
+    end
+    return false
+end
+
+-- Helper to set format data for exact health display using BreakUpLargeNumbers
+-- BreakUpLargeNumbers accepts secret values and returns a formatted string with thousand separators
+-- Returns true if format data was set (caller should return nil for text)
+local function SetHealthExactFormat(unit, formatStr)
+    if not unit.unitid then return false end
+    local health = UnitHealth(unit.unitid)
+    if health and (issecretvalue and issecretvalue(health)) then
+        -- BreakUpLargeNumbers accepts secret values and returns formatted string
+        local healthStr = BreakUpLargeNumbers(health)
+        unit.healthTextFormat = formatStr
+        unit.healthTextValue = healthStr
+        return true
+    end
+    return false
+end
+
+-- Helper to set format data for abbreviated health display using AbbreviateNumbers
+-- AbbreviateNumbers accepts secret values and returns a shortened string (e.g., "1.5M")
+-- Returns true if format data was set (caller should return nil for text)
+local function SetHealthApproxFormat(unit, formatStr)
+    if not unit.unitid then return false end
+    local health = UnitHealth(unit.unitid)
+    if health and (issecretvalue and issecretvalue(health)) then
+        -- AbbreviateNumbers accepts secret values and returns abbreviated string
+        local healthStr = AbbreviateNumbers(health)
+        unit.healthTextFormat = formatStr
+        unit.healthTextValue = healthStr
+        return true
+    end
+    return false
+end
 
 -- Colors
 --local White = {r = 1, g = 1, b = 1}
@@ -144,11 +196,24 @@ local function GetHealthPercent(unit)
 end
 -- Percent
 local function TextHealthPercent(unit)
+	-- 12.0.0+: Use SetFormattedText approach for secret values
+	local precision = LocalVars.TextHealthPercentPrecision or 0
+	local formatStr = "%." .. precision .. "f%%"
+	if SetHealthPercentFormat(unit, formatStr) then
+		return nil  -- Signal to use format data via SetFormattedText
+	end
+	-- Fallback for non-secret values or older clients
 	return GetHealthPercent(unit).."%"
 end
 
 local function TextHealthPercentColored(unit)
 	local color = ColorFunctionByHealth(unit)
+	-- 12.0.0+: Use SetFormattedText approach for secret values
+	local precision = LocalVars.TextHealthPercentPrecision or 0
+	local formatStr = "%." .. precision .. "f%%"
+	if SetHealthPercentFormat(unit, formatStr) then
+		return nil, color.r, color.g, color.b, .7  -- Signal to use format data
+	end
 	return GetHealthPercent(unit).."%", color.r, color.g, color.b, .7
 end
 
@@ -166,37 +231,95 @@ local function HealthFunctionPercentColored(unit)
 	else return "" end
 end
 
--- Actual
+-- Actual (Exact Health with thousand separators)
 local function HealthFunctionExact(unit)
+	-- 12.0.0+: Use SetFormattedText approach for secret values
+	if SetHealthExactFormat(unit, "%s") then
+		return nil  -- Signal to use format data via SetFormattedText
+	end
+	-- Fallback for non-secret values or older clients
 	return SepThousands(GetHealth(unit))
 end
--- Approximate
+-- Approximate (Shortened health like "1.5M" or "500K")
 local function HealthFunctionApprox(unit)
+	-- 12.0.0+: Use SetFormattedText approach for secret values
+	if SetHealthApproxFormat(unit, "%s") then
+		return nil  -- Signal to use format data via SetFormattedText
+	end
+	-- Fallback for non-secret values or older clients
 	return ShortenNumber(GetHealth(unit))
 end
--- Approximate
+-- Approximate Health and Percent
 local function HealthFunctionApproxAndPercent(unit)
 	local color = ColorFunctionByHealth(unit)
-	return HealthFunctionApprox(unit).."  ("..GetHealthPercent(unit).."%)", color.r, color.g, color.b, .7
+	-- 12.0.0+: For composite text, we need a two-part format
+	-- SetFormattedText can handle: "%s  (%.0f%%)" with health string and percent number
+	local precision = LocalVars.TextHealthPercentPrecision or 0
+	local formatStr = "%s  (%." .. precision .. "f%%)"
+	if UnitHealthPercentAPI and unit.unitid then
+		local health = UnitHealth(unit.unitid)
+		local percent = UnitHealthPercentAPI(unit.unitid, false, CurveConstantsRef and CurveConstantsRef.ScaleTo100 or nil)
+		if percent and (issecretvalue and issecretvalue(percent)) then
+			-- Use AbbreviateNumbers which accepts secret values
+			local healthStr = AbbreviateNumbers(health)
+			unit.healthTextFormat = formatStr
+			unit.healthTextValue = percent
+			unit.healthTextPrefix = healthStr
+			unit.healthTextComposite = true  -- Signal this is a composite format
+			return nil, color.r, color.g, color.b, .7
+		end
+	end
+	return ShortenNumber(GetHealth(unit)).."  ("..GetHealthPercent(unit).."%)", color.r, color.g, color.b, .7
 end
---Deficit
+-- Deficit (Note: Cannot use secret values directly since arithmetic is required)
+-- Falls back to safe values which provide reasonable estimates
 local function HealthFunctionDeficit(unit)
 	local health, healthmax = GetHealth(unit), GetHealthMax(unit)
 	if health and healthmax and (health ~= healthmax) then return "-"..SepThousands(healthmax - health) end
 end
--- Total and Percent
+-- Total and Percent (Abbreviated health with percent)
 local function HealthFunctionTotal(unit)
 	local color = ColorFunctionByHealth(unit)
 	--local color = HubData.Colors.White
-	local health, healthmax = GetHealth(unit), GetHealthMax(unit)
-	return ShortenNumber(health).."|cffffffff ("..GetHealthPercent(unit).."%)", color.r, color.g, color.b
+	-- 12.0.0+: For composite text with color codes, use special format
+	local precision = LocalVars.TextHealthPercentPrecision or 0
+	local formatStr = "%s|cffffffff (%." .. precision .. "f%%)"
+	if UnitHealthPercentAPI and unit.unitid then
+		local health = UnitHealth(unit.unitid)
+		local percent = UnitHealthPercentAPI(unit.unitid, false, CurveConstantsRef and CurveConstantsRef.ScaleTo100 or nil)
+		if percent and (issecretvalue and issecretvalue(percent)) then
+			-- Use AbbreviateNumbers which accepts secret values
+			local healthStr = AbbreviateNumbers(health)
+			unit.healthTextFormat = formatStr
+			unit.healthTextValue = percent
+			unit.healthTextPrefix = healthStr
+			unit.healthTextComposite = true
+			return nil, color.r, color.g, color.b
+		end
+	end
+	return ShortenNumber(GetHealth(unit)).."|cffffffff ("..GetHealthPercent(unit).."%)", color.r, color.g, color.b
 end
--- Exact Health and Percent
+-- Exact Health and Percent (Full number with thousand separators plus percent)
 local function HealthFunctionExactTotal(unit)
 	local color = ColorFunctionByHealth(unit)
 	--local color = HubData.Colors.White
-	local health, healthmax = GetHealth(unit), GetHealthMax(unit)
-	return SepThousands(health).."|cffffffff ("..GetHealthPercent(unit).."%)", color.r, color.g, color.b
+	-- 12.0.0+: For composite text with color codes, use special format
+	local precision = LocalVars.TextHealthPercentPrecision or 0
+	local formatStr = "%s|cffffffff (%." .. precision .. "f%%)"
+	if UnitHealthPercentAPI and unit.unitid then
+		local health = UnitHealth(unit.unitid)
+		local percent = UnitHealthPercentAPI(unit.unitid, false, CurveConstantsRef and CurveConstantsRef.ScaleTo100 or nil)
+		if percent and (issecretvalue and issecretvalue(percent)) then
+			-- Use BreakUpLargeNumbers which accepts secret values and adds thousand separators
+			local healthStr = BreakUpLargeNumbers(health)
+			unit.healthTextFormat = formatStr
+			unit.healthTextValue = percent
+			unit.healthTextPrefix = healthStr
+			unit.healthTextComposite = true
+			return nil, color.r, color.g, color.b
+		end
+	end
+	return SepThousands(GetHealth(unit)).."|cffffffff ("..GetHealthPercent(unit).."%)", color.r, color.g, color.b
 end
 -- TargetOf
 local function HealthFunctionTargetOf(unit)
@@ -234,8 +357,18 @@ end
 local function HealthFunctionLevelHealth(unit)
 	local level = unit.level
 	if unit.isElite then level = level.."E" end
-	return "("..level..") |cffffffff"..HealthFunctionApprox(unit), unit.levelcolorRed, unit.levelcolorGreen, unit.levelcolorBlue, .9
-	--return "|cffffffff"..HealthFunctionApprox(unit).."  |r"..level, unit.levelcolorRed, unit.levelcolorGreen, unit.levelcolorBlue, .9
+	-- 12.0.0+: Handle secret values with SetFormattedText
+	local formatStr = "("..level..") |cffffffff%s"
+	if unit.unitid then
+		local health = UnitHealth(unit.unitid)
+		if health and (issecretvalue and issecretvalue(health)) then
+			local healthStr = AbbreviateNumbers(health)
+			unit.healthTextFormat = formatStr
+			unit.healthTextValue = healthStr
+			return nil, unit.levelcolorRed, unit.levelcolorGreen, unit.levelcolorBlue, .9
+		end
+	end
+	return "("..level..") |cffffffff"..ShortenNumber(GetHealth(unit)), unit.levelcolorRed, unit.levelcolorGreen, unit.levelcolorBlue, .9
 end
 
 -- Arena ID
@@ -272,7 +405,7 @@ local function HealthFunctionArenaIDOnly(unit)
 end
 local TextArenaIDOnly = HealthFunctionArenaIDOnly
 
--- Arena Vitals (ID, Mana, Health
+-- Arena Vitals (ID, Mana, Health)
 local function HealthFunctionArenaID(unit)
 	local localid
 	local powercolor = HubData.Colors.White
@@ -308,6 +441,18 @@ local function HealthFunctionArenaID(unit)
 					powercolor = PowerBarColor[powerindex] or HubData.Colors.White
 				end
 			end
+		end
+	end
+
+	-- 12.0.0+: Handle secret values with SetFormattedText
+	if unit.unitid then
+		local health = UnitHealth(unit.unitid)
+		if health and (issecretvalue and issecretvalue(health)) then
+			local healthStr = AbbreviateNumbers(health)
+			local formatStr = arenastring.."|cffffffff%s|cff0088ff"..powerstring
+			unit.healthTextFormat = formatStr
+			unit.healthTextValue = healthStr
+			return nil, powercolor.r, powercolor.g, powercolor.b, 1
 		end
 	end
 
@@ -574,6 +719,12 @@ local function TextAll(unit)
 	local color = HubData.Colors.White
 	-- Use SafeIsDamaged for 12.0.0+ secret value handling
 	if SafeIsDamaged(unit) then
+		-- 12.0.0+: Use SetFormattedText approach for secret values
+		local precision = LocalVars.TextHealthPercentPrecision or 0
+		local formatStr = "%." .. precision .. "f%%"
+		if SetHealthPercentFormat(unit, formatStr) then
+			return nil, color.r, color.g, color.b, .7
+		end
 		return GetHealthPercent(unit).."%", color.r, color.g, color.b, .7
 	else
 		--return GetLevelDescription(unit) , unit.levelcolorRed, unit.levelcolorGreen, unit.levelcolorBlue, .7

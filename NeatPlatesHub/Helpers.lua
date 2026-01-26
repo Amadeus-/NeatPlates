@@ -19,6 +19,12 @@ end
 
 -- Safe division that handles secret values - returns percentage as 0-1
 local function SafeHealthPercent(unit)
+	-- In 12.0.0+, NeatPlatesCore stores unit.healthPercent using UnitHealthPercent()
+	-- which returns a non-secret value. Use this when available.
+	if unit.healthPercent ~= nil then
+		return unit.healthPercent
+	end
+	-- Fallback for older API or missing data
 	if isMidnight and issecretvalue then
 		if issecretvalue(unit.health) or issecretvalue(unit.healthmax) then
 			-- Fallback to safe cached values
@@ -36,6 +42,11 @@ end
 
 -- Safe comparison for health < healthmax (commonly used for "is damaged" checks)
 local function SafeIsDamaged(unit)
+	-- In 12.0.0+, use unit.healthPercent which is derived from UnitHealthPercent() (non-secret)
+	if unit.healthPercent ~= nil then
+		return unit.healthPercent < 1
+	end
+	-- Fallback for older API or missing data
 	if isMidnight and issecretvalue then
 		if issecretvalue(unit.health) or issecretvalue(unit.healthmax) then
 			-- Use safe cached values
@@ -50,6 +61,11 @@ end
 
 -- Safe health > 0 check
 local function SafeHasHealth(unit)
+	-- In 12.0.0+, use unit.healthPercent which is derived from UnitHealthPercent() (non-secret)
+	if unit.healthPercent ~= nil then
+		return unit.healthPercent > 0
+	end
+	-- Fallback for older API or missing data
 	if isMidnight and issecretvalue then
 		if issecretvalue(unit.health) then
 			if unit.healthSafe then
