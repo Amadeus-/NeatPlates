@@ -4,9 +4,10 @@ local LocalVars = NeatPlatesHubDefaults
 local L = LibStub("AceLocale-3.0"):GetLocale("NeatPlates")
 
 -- Version detection for 12.0.0+ (Midnight)
--- In WoW 12.0+, aura ownership (caster) is a secret value during combat,
--- making "Show Mine" vs "Show All" filters impossible to implement reliably.
--- We detect this at load time and bypass ownership filtering for 12.0+ users.
+-- In WoW 12.0+, aura ownership (caster) is a secret value during combat.
+-- The main "Show Mine" filter now uses the |PLAYER API filter (handled in AuraWidget.lua).
+-- This flag is still used for custom aura lists with "my" prefix, which need special handling
+-- since the |PLAYER filter is applied globally and custom lists may need different behavior.
 local isWoW12Plus = NeatPlatesHubHelpers and NeatPlatesHubHelpers.isMidnight or (select(4, GetBuildInfo()) >= 120000)
 
 -- Widget Helpers
@@ -548,55 +549,32 @@ local function SmartFilterMode(aura)
 		NeatPlatesUtility.Debug.Log("Filter", "  effect: " .. tostring(aura.effect))
 		NeatPlatesUtility.Debug.Log("Filter", "  WidgetBuffFilter: " .. tostring(LocalVars.WidgetBuffFilter))
 		NeatPlatesUtility.Debug.Log("Filter", "  WidgetDebuffFilter: " .. tostring(LocalVars.WidgetDebuffFilter))
-		NeatPlatesUtility.Debug.Log("Filter", "  isWoW12Plus: " .. tostring(isWoW12Plus))
 	end
 
-	-- Determine effective filter values
-	-- WoW 12.0.0+ VERSION-AWARE FILTER HANDLING:
-	-- In WoW 12.0+, aura ownership (caster) is always a secret value during combat,
-	-- making "Show Mine" impossible to implement reliably. For 12.0+ users:
-	-- - "Show Mine" (filter == 2) is treated as "Show All" (filter == 3)
-	-- - Pre-12.0 users get the original behavior unchanged
-	local effectiveBuffFilter = LocalVars.WidgetBuffFilter
-	local effectiveDebuffFilter = LocalVars.WidgetDebuffFilter
+	-- FILTER MODE HANDLING:
+	-- Filter mode 1 = "Show None" - don't show anything from this filter path
+	-- Filter mode 2 = "Show Mine" - API uses |PLAYER filter, so all returned auras are player's
+	-- Filter mode 3 = "Show All" - show everything
+	--
+	-- For "Show Mine" (mode 2): The |PLAYER filter is applied at the API level in AuraWidget.lua,
+	-- meaning all auras returned are already filtered to player auras. We treat them as "show all"
+	-- since everything we received is already "mine". This works in both pre-12.0 and 12.0+.
 
-	if isWoW12Plus then
-		-- Upgrade "Show Mine" to "Show All" for 12.0+ users
-		if effectiveBuffFilter == 2 then effectiveBuffFilter = 3 end
-		if effectiveDebuffFilter == 2 then effectiveDebuffFilter = 3 end
-		if debugEnabled then
-			NeatPlatesUtility.Debug.Log("Filter", "  (12.0+) effectiveBuffFilter: " .. tostring(effectiveBuffFilter))
-			NeatPlatesUtility.Debug.Log("Filter", "  (12.0+) effectiveDebuffFilter: " .. tostring(effectiveDebuffFilter))
-		end
-	end
-
-	-- Show All Buffs and Debuffs (or "Show Mine" upgraded to "Show All" for 12.0+)
-	if (effectiveBuffFilter == 3 and aura.effect == "HELPFUL") or (effectiveDebuffFilter == 3 and aura.effect == "HARMFUL") then
+	-- Show buffs: mode 2 (Show Mine - API pre-filtered) or mode 3 (Show All)
+	if aura.effect == "HELPFUL" and (LocalVars.WidgetBuffFilter == 2 or LocalVars.WidgetBuffFilter == 3) then
 		ShowThisAura = true
 		if debugEnabled then
-			NeatPlatesUtility.Debug.Log("Filter", "  PASS: Show All filter matched")
+			local filterName = LocalVars.WidgetBuffFilter == 2 and "Show Mine (API filtered)" or "Show All"
+			NeatPlatesUtility.Debug.Log("Filter", "  PASS: Buff filter (" .. filterName .. ")")
 		end
 	end
 
-	-- My own Buffs and Debuffs (pre-12.0 only, since 12.0+ filter==2 is already upgraded to 3 above)
-	if not isWoW12Plus then
-		local playerMatch = CasterMatches(aura.caster, "player", aura.isFromPlayer)
-		local petMatch = CasterMatches(aura.caster, "pet", aura.isFromPlayer)
-		local isMyCast = playerMatch or petMatch
-		local durationCheck = aura.baseduration and aura.baseduration < 150
-
+	-- Show debuffs: mode 2 (Show Mine - API pre-filtered) or mode 3 (Show All)
+	if aura.effect == "HARMFUL" and (LocalVars.WidgetDebuffFilter == 2 or LocalVars.WidgetDebuffFilter == 3) then
+		ShowThisAura = true
 		if debugEnabled then
-			NeatPlatesUtility.Debug.Log("Filter", "  isMyCast: " .. tostring(isMyCast))
-			NeatPlatesUtility.Debug.Log("Filter", "  durationCheck (<150): " .. tostring(durationCheck))
-		end
-
-		if isMyCast and durationCheck then
-			if (LocalVars.WidgetBuffFilter == 2 and aura.effect == "HELPFUL") or (LocalVars.WidgetDebuffFilter == 2 and aura.effect == "HARMFUL") then
-				ShowThisAura = true
-				if debugEnabled then
-					NeatPlatesUtility.Debug.Log("Filter", "  PASS: My aura filter matched")
-				end
-			end
+			local filterName = LocalVars.WidgetDebuffFilter == 2 and "Show Mine (API filtered)" or "Show All"
+			NeatPlatesUtility.Debug.Log("Filter", "  PASS: Debuff filter (" .. filterName .. ")")
 		end
 	end
 
@@ -914,6 +892,11 @@ local function OnVariableChange(vars)
 		NeatPlatesWidgets.SetAuraSortMode(AuraSortFunction)
 		NeatPlatesWidgets.SetAuraOptions(LocalVars)
 		NeatPlatesWidgets.SetEmphasizedAuraFilter(EmphasizedFilter, LocalVars.EmphasizedUnique)
+		-- Pass filter modes to AuraWidget for server-side |PLAYER filtering
+		-- This enables "Show Mine" to work in WoW 12.0+ by filtering at the API level
+		if NeatPlatesWidgets.SetAuraFilterModes then
+			NeatPlatesWidgets.SetAuraFilterModes(LocalVars.WidgetDebuffFilter, LocalVars.WidgetBuffFilter)
+		end
 	else NeatPlatesWidgets:DisableAuraWatcher() end
 
 	if LocalVars.WidgetAbsorbIndicator then

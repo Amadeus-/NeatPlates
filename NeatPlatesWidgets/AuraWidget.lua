@@ -57,12 +57,20 @@ local function SafeValue(value)
 	return value
 end
 
+-- Filter modes for "Show Mine" vs "Show All" - set via SetAuraFilterModes()
+-- Values: 1 = Show None, 2 = Show Mine, 3 = Show All
+-- IMPORTANT: These must be declared BEFORE _GetUnitAurasForNameplate so the function
+-- captures these locals in its closure, not nonexistent globals
+local WidgetDebuffFilterMode = 3  -- Default to Show All
+local WidgetBuffFilterMode = 1    -- Default to Show None
+
 -- 12.0.0+: Use C_UnitAuras.GetUnitAuras() which returns full aura data tables
 -- The data fields may be secret values, but we handle that when displaying
 local _GetUnitAurasForNameplate = nil
 if C_UnitAuras and C_UnitAuras.GetUnitAuras then
 	-- Function to get all auras for a unit
 	-- Returns raw aura data with auraInstanceID preserved for later API calls
+	-- Uses |PLAYER filter when "Show Mine" mode is active to filter server-side
 	_GetUnitAurasForNameplate = function(unit)
 		local auras = {}
 		local seenIds = {}
@@ -70,16 +78,29 @@ if C_UnitAuras and C_UnitAuras.GetUnitAuras then
 		-- Debug: Log API calls
 		if NEATPLATES_DEBUG_AURAS and NeatPlatesUtility and NeatPlatesUtility.Debug then
 			NeatPlatesUtility.Debug.Log("Aura", "_GetUnitAurasForNameplate called for: " .. tostring(unit))
+			NeatPlatesUtility.Debug.Log("Aura", "  WidgetDebuffFilterMode: " .. tostring(WidgetDebuffFilterMode))
+			NeatPlatesUtility.Debug.Log("Aura", "  WidgetBuffFilterMode: " .. tostring(WidgetBuffFilterMode))
 		end
 
-		-- First, get nameplate-specific auras
-		local debuffsNP = C_UnitAuras.GetUnitAuras(unit, "HARMFUL|INCLUDE_NAME_PLATE_ONLY") or {}
-		local buffsNP = C_UnitAuras.GetUnitAuras(unit, "HELPFUL|INCLUDE_NAME_PLATE_ONLY") or {}
+		-- Build filter strings based on "Show Mine" vs "Show All" settings
+		-- Filter mode 2 = "Show Mine" -> append |PLAYER to filter server-side
+		-- Filter mode 3 = "Show All" -> no |PLAYER, get all auras
+		-- Filter mode 1 = "Show None" -> we still fetch, but they'll be filtered out later
+		local debuffPlayerFilter = (WidgetDebuffFilterMode == 2) and "|PLAYER" or ""
+		local buffPlayerFilter = (WidgetBuffFilterMode == 2) and "|PLAYER" or ""
+
+		-- First, get nameplate-specific auras (always include these for proper nameplate display)
+		-- For nameplate auras, also apply the |PLAYER filter when "Show Mine" is active
+		local debuffNPFilter = "HARMFUL|INCLUDE_NAME_PLATE_ONLY" .. debuffPlayerFilter
+		local buffNPFilter = "HELPFUL|INCLUDE_NAME_PLATE_ONLY" .. buffPlayerFilter
+
+		local debuffsNP = C_UnitAuras.GetUnitAuras(unit, debuffNPFilter) or {}
+		local buffsNP = C_UnitAuras.GetUnitAuras(unit, buffNPFilter) or {}
 
 		-- Debug: Log counts from each filter
 		if NEATPLATES_DEBUG_AURAS and NeatPlatesUtility and NeatPlatesUtility.Debug then
-			NeatPlatesUtility.Debug.Log("Aura", "  HARMFUL|INCLUDE_NAME_PLATE_ONLY: " .. #debuffsNP .. " auras")
-			NeatPlatesUtility.Debug.Log("Aura", "  HELPFUL|INCLUDE_NAME_PLATE_ONLY: " .. #buffsNP .. " auras")
+			NeatPlatesUtility.Debug.Log("Aura", "  Filter: " .. debuffNPFilter .. " -> " .. #debuffsNP .. " auras")
+			NeatPlatesUtility.Debug.Log("Aura", "  Filter: " .. buffNPFilter .. " -> " .. #buffsNP .. " auras")
 		end
 
 		for _, auraData in ipairs(debuffsNP) do
@@ -100,14 +121,18 @@ if C_UnitAuras and C_UnitAuras.GetUnitAuras then
 			end
 		end
 
-		-- Also get all other auras (for "Show All" filter modes)
-		local allDebuffs = C_UnitAuras.GetUnitAuras(unit, "HARMFUL") or {}
-		local allBuffs = C_UnitAuras.GetUnitAuras(unit, "HELPFUL") or {}
+		-- Also get other auras (for custom aura lists that might reference non-nameplate auras)
+		-- Apply |PLAYER filter when "Show Mine" is active
+		local debuffFilter = "HARMFUL" .. debuffPlayerFilter
+		local buffFilter = "HELPFUL" .. buffPlayerFilter
+
+		local allDebuffs = C_UnitAuras.GetUnitAuras(unit, debuffFilter) or {}
+		local allBuffs = C_UnitAuras.GetUnitAuras(unit, buffFilter) or {}
 
 		-- Debug: Log counts from each filter
 		if NEATPLATES_DEBUG_AURAS and NeatPlatesUtility and NeatPlatesUtility.Debug then
-			NeatPlatesUtility.Debug.Log("Aura", "  HARMFUL (all): " .. #allDebuffs .. " auras")
-			NeatPlatesUtility.Debug.Log("Aura", "  HELPFUL (all): " .. #allBuffs .. " auras")
+			NeatPlatesUtility.Debug.Log("Aura", "  Filter: " .. debuffFilter .. " -> " .. #allDebuffs .. " auras")
+			NeatPlatesUtility.Debug.Log("Aura", "  Filter: " .. buffFilter .. " -> " .. #allBuffs .. " auras")
 		end
 
 		for _, auraData in ipairs(allDebuffs) do
@@ -195,6 +220,9 @@ local SpacerSlots = 0 -- math.min(15, DebuffColumns-1)
 
 local PandemicEnabled = false
 local PandemicColor = {}
+
+-- Note: WidgetDebuffFilterMode and WidgetBuffFilterMode are declared earlier in the file
+-- (before _GetUnitAurasForNameplate) so they're properly captured in the closure
 
 local EmphasizedUnique = false
 local MaxEmphasizedAuras = 1
@@ -1298,6 +1326,18 @@ local function SetEmphasizedSlots(amount)
 	MaxEmphasizedAuras = amount
 end
 
+-- Set the filter modes for "Show Mine" vs "Show All" aura filtering
+-- This controls whether |PLAYER is appended to the API filter strings
+-- debuffMode/buffMode: 1 = Show None, 2 = Show Mine, 3 = Show All
+local function SetAuraFilterModes(debuffMode, buffMode)
+	WidgetDebuffFilterMode = debuffMode or 3
+	WidgetBuffFilterMode = buffMode or 1
+
+	if NEATPLATES_DEBUG_AURAS and NeatPlatesUtility and NeatPlatesUtility.Debug then
+		NeatPlatesUtility.Debug.Log("Aura", "SetAuraFilterModes: debuff=" .. tostring(WidgetDebuffFilterMode) .. ", buff=" .. tostring(WidgetBuffFilterMode))
+	end
+end
+
 -----------------------------------------------------
 -- External
 -----------------------------------------------------
@@ -1315,6 +1355,7 @@ NeatPlatesWidgets.SetPandemic = SetPandemic
 NeatPlatesWidgets.SetBorderTypes = SetBorderTypes
 NeatPlatesWidgets.SetSpacerSlots = SetSpacerSlots
 NeatPlatesWidgets.SetEmphasizedSlots = SetEmphasizedSlots
+NeatPlatesWidgets.SetAuraFilterModes = SetAuraFilterModes
 
 NeatPlatesWidgets.CreateAuraWidget = CreateAuraWidget
 
