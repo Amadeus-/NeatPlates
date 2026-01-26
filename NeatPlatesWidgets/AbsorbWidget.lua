@@ -2,6 +2,32 @@
 ---- NeatPlates Absorb Widget ----
 ---------------------------------------------
 
+-- Version check for 12.0.0+ (Midnight) API changes
+local isMidnight = select(4, GetBuildInfo()) >= 120000
+
+-- Safe numeric value helper for 12.0.0+ (absorb values can be secret in combat)
+-- Returns the numeric value if safe, or the fallback if it's a secret value
+local function SafeNumber(value, fallback)
+	if isMidnight and issecretvalue and issecretvalue(value) then
+		return fallback or 0
+	end
+	return value or fallback or 0
+end
+
+-- Check if any of the provided values are secret (for skipping cache comparisons)
+local function HasSecretValues(...)
+	if not isMidnight or not issecretvalue then
+		return false
+	end
+	for i = 1, select("#", ...) do
+		local val = select(i, ...)
+		if issecretvalue(val) then
+			return true
+		end
+	end
+	return false
+end
+
 local font = "FONTS\\arialn.ttf"
 -- local art = "Interface\\Addons\\NeatPlatesWidgets\\AbsorbWidget\\Absorbs"
 -- local artVertical = "Interface\\Addons\\NeatPlatesWidgets\\AbsorbWidget\\Absorbs"
@@ -53,26 +79,43 @@ local function UpdateAbsorbs(frame, unitid)
 	local _orientation = frame._orientation
 	local showFrame = false
 	-- local anchor = "RIGHT"
+
+	-- Get raw values (may be secret in WoW 12.0+)
+	local rawAbsorbDamage = UnitGetTotalAbsorbs(unitid) or 0
+	local rawAbsorbHealing = UnitGetTotalHealAbsorbs(unitid) or 0
+	local rawHealth = UnitHealth(unitid) or 0
+	local rawHealthMax = UnitHealthMax(unitid) or 1
+
+	-- Get safe numeric values for comparisons and arithmetic
+	local absorbDamage = SafeNumber(rawAbsorbDamage, 0)
+	local absorbHealing = SafeNumber(rawAbsorbHealing, 0)
+	local health = SafeNumber(rawHealth, 0)
+	local healthmax = SafeNumber(rawHealthMax, 1)
+
+	-- Ensure healthmax is never zero to avoid division errors
+	if healthmax == 0 then healthmax = 1 end
+
 	local absorb = {
-		["damage"] = UnitGetTotalAbsorbs(unitid) or 0,
-		["healing"] = UnitGetTotalHealAbsorbs(unitid) or 0,
+		["damage"] = absorbDamage,
+		["healing"] = absorbHealing,
 	}
-  local health = UnitHealth(unitid) or 0
-	local healthmax = UnitHealthMax(unitid) or 1
-	
+
 	-- For testing absorbs
 	--absorb.damage = healthmax/2
 	--absorb.healing = healthmax/4
 
 	--[[ We wont update the widget until something has changed ]] --
-	if frame.lastAbsorb ~= nil and frame.lastAbsorb.damage == absorb.damage and
+	-- Skip cache check if values are secret (always update in that case)
+	local hasSecrets = HasSecretValues(rawAbsorbDamage, rawAbsorbHealing, rawHealth, rawHealthMax)
+	if not hasSecrets and
+		frame.lastAbsorb ~= nil and frame.lastAbsorb.damage == absorb.damage and
 		frame.lastAbsorb.healing == absorb.healing and
 		frame.lasthp ~= nil and frame.lasthp == health and
 		frame.lastmaxhp ~= nil and frame.lastmaxhp == healthmax and
 		frame.lastStyle ~= nil and frame.lastStyle == "Default" then
 		return
 	end
-	
+
 	--[[ Let's store the last values ]] --
 	frame.lastAbsorb = absorb
 	frame.lasthp = health
@@ -109,7 +152,7 @@ local function UpdateAbsorbs(frame, unitid)
 					if offset + width >= _frameWidth then
 						if _frameWidth == helper then
 							offset = offset - _frameWidth*0.015
-						end 
+						end
 
 						width = _frameWidth - offset
 					end
