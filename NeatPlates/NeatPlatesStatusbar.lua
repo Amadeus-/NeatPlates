@@ -19,9 +19,17 @@ end
 -- in arithmetic operations. The native WoW StatusBar widget has SetValue() and SetMinMaxValues()
 -- methods that ACCEPT SECRET VALUES directly (SecretArguments = "AllowedWhenTainted").
 --
--- For 12.0.0+, we use a native StatusBar as the PRIMARY visible bar element.
--- This completely bypasses the secret value issue because the StatusBar natively handles
--- secret values for rendering without us ever needing to read them back.
+-- For 12.0.0+, we use a HYBRID approach:
+-- 1. Native StatusBar (INVISIBLE) - Used only for VALUE handling, accepts secret values
+-- 2. Visual TEXTURE layer (VISIBLE) - Used for APPEARANCE, preserves rounded corners via SetTexCoord
+--
+-- This approach solves two problems:
+-- - Secret values: The native StatusBar accepts them without arithmetic
+-- - Visual appearance: The custom texture uses SetTexCoord to create the rounded look
+--
+-- The key insight is that NeatPlates typically uses SetValueFromUnit() or SetValuePercent()
+-- which calculate percentages BEFORE passing to the bar, so we can track the percentage
+-- and use it to update both the native bar (for correctness) and the visual bar (for appearance).
 local isMidnight = select(4, GetBuildInfo()) >= 120000
 
 ----------------------------------------------------------------------
@@ -205,36 +213,103 @@ end
 
 
 ----------------------------------------------------------------------
--- 12.0.0+ Native StatusBar Implementation
--- Uses native StatusBar as the primary visual element to handle secret values
+-- 12.0.0+ Hybrid StatusBar Implementation
+-- Uses native StatusBar for VALUE handling (accepts secret values)
+-- Uses separate visual TEXTURE layer for APPEARANCE (preserves rounded look via SetTexCoord)
 ----------------------------------------------------------------------
 
--- SetValue for native StatusBar wrapper
--- The native StatusBar.SetValue accepts secret values directly
-local function SetValue_Native(self, val)
-	-- Native StatusBar handles secret values natively
-	self.NativeBar:SetValue(val)
-	-- Store non-secret values for GetMinMaxValues compatibility
-	if not issecretvalue or not issecretvalue(val) then
-		self.Value = val
+-- Helper to update the visual bar based on stored percentage
+local function UpdateVisualBar_Hybrid(self)
+	local pct = self.LastPercent or 0
+	local barsize = self.Dim or 1
+
+	-- Calculate neutral zone positioning
+	local neutralSize = (self.NeutralMax - self.NeutralMin) / self.MaxVal
+	local neutralLeft = barsize * ((self.NeutralMin) / self.MaxVal)
+	local neutralRight = barsize * ((self.MaxVal - self.NeutralMax) / self.MaxVal)
+
+	if self.Orientation == "VERTICAL" then
+		self.VisualBar:SetHeight(barsize * pct)
+		local fin = self.Bottom - ((self.Bottom - self.Top) * pct)
+		self.VisualBar:SetTexCoord(self.Left, self.Right, fin, self.Bottom)
+
+		-- Set neutral zone size
+		self.Neutral:ClearAllPoints()
+		self.Neutral:SetPoint("BOTTOMLEFT", 0, neutralLeft)
+		self.Neutral:SetPoint("TOPRIGHT", 0, -neutralRight)
+	else
+		self.VisualBar:SetWidth(barsize * pct)
+		self.Neutral:SetWidth(barsize * neutralSize)
+		local fin = ((self.Right - self.Left) * pct) + self.Left
+		self.VisualBar:SetTexCoord(self.Left, fin, self.Top, self.Bottom)
+		self.Neutral:SetTexCoord(self.Left, self.Right, self.Top, self.Bottom)
+
+		-- Set neutral zone size
+		self.Neutral:ClearAllPoints()
+		self.Neutral:SetPoint("TOPLEFT", neutralLeft, 0)
+		self.Neutral:SetPoint("BOTTOMRIGHT", -neutralRight, 0)
 	end
 end
 
--- SetValuePercent for native StatusBar - sets bar to a specific fraction (0-1)
-local function SetValuePercent_Native(self, pct)
+-- Helper to update dimension on size change
+local function UpdateSize_Hybrid(self)
+	if self.Orientation == "VERTICAL" then
+		self.Dim = self:GetHeight()
+	else
+		self.Dim = self:GetWidth()
+	end
+	UpdateVisualBar_Hybrid(self)
+end
+
+-- SetValue for hybrid StatusBar wrapper
+-- The native StatusBar.SetValue accepts secret values directly
+-- We also update the visual bar if we can determine the percentage
+local function SetValue_Hybrid(self, val)
+	-- Native StatusBar handles secret values natively (but is invisible)
+	self.NativeBar:SetValue(val)
+
+	-- Update visual bar and store non-secret values
+	if not issecretvalue or not issecretvalue(val) then
+		self.Value = val
+		-- Calculate percentage from stored min/max
+		local range = self.MaxVal - self.MinVal
+		if range > 0 then
+			self.LastPercent = (val - self.MinVal) / range
+			if self.LastPercent < 0.01 then self.LastPercent = 0.01 end
+			if self.LastPercent > 1 then self.LastPercent = 1 end
+		else
+			self.LastPercent = 0.01
+		end
+		UpdateVisualBar_Hybrid(self)
+	end
+	-- If it's a secret value, we can't update the visual bar directly here
+	-- The caller should use SetValueFromUnit or SetValuePercent instead
+end
+
+-- SetValuePercent for hybrid StatusBar - sets bar to a specific fraction (0-1)
+-- This is the preferred method for 12.0.0+ as it works with secret values
+local function SetValuePercent_Hybrid(self, pct)
 	if not pct or pct < 0 then pct = 0 end
 	if pct > 1 then pct = 1 end
-	-- Set min/max to 0,1 and value to the percentage
+
+	-- Update native bar (set to 0-1 range for simplicity)
 	self.NativeBar:SetMinMaxValues(0, 1)
 	self.NativeBar:SetValue(pct)
+
+	-- Store values
 	self.MinVal = 0
 	self.MaxVal = 1
 	self.Value = pct
+	self.LastPercent = pct
+	if self.LastPercent < 0.01 then self.LastPercent = 0.01 end
+
+	-- Update visual bar with the percentage
+	UpdateVisualBar_Hybrid(self)
 end
 
--- SetValueFromUnit for native StatusBar
+-- SetValueFromUnit for hybrid StatusBar
 -- Uses UnitHealthPercent with CurveConstants.ScaleTo100 to get a usable percentage
-local function SetValueFromUnit_Native(self, unitid)
+local function SetValueFromUnit_Hybrid(self, unitid)
 	if not unitid or not UnitHealthPercent then
 		return false
 	end
@@ -247,15 +322,15 @@ local function SetValueFromUnit_Native(self, unitid)
 
 	if percent and type(percent) == "number" then
 		local frac = percent / 100
-		SetValuePercent_Native(self, frac)
+		SetValuePercent_Hybrid(self, frac)
 		return true
 	end
 
 	return false
 end
 
--- SetPowerFromUnit for native StatusBar
-local function SetPowerFromUnit_Native(self, unitid, powerType)
+-- SetPowerFromUnit for hybrid StatusBar
+local function SetPowerFromUnit_Hybrid(self, unitid, powerType)
 	if not unitid or not UnitPowerPercent then
 		return false
 	end
@@ -268,20 +343,22 @@ local function SetPowerFromUnit_Native(self, unitid, powerType)
 
 	if percent and type(percent) == "number" then
 		local frac = percent / 100
-		SetValuePercent_Native(self, frac)
+		SetValuePercent_Hybrid(self, frac)
 		return true
 	end
 
 	return false
 end
 
--- SetMinMaxValues for native StatusBar wrapper
+-- SetMinMaxValues for hybrid StatusBar wrapper
 -- The native StatusBar.SetMinMaxValues accepts secret values directly
-local function SetMinMaxValues_Native(self, minval, maxval)
+local function SetMinMaxValues_Hybrid(self, minval, maxval)
 	if not (minval or maxval) then return end
+
 	-- Native StatusBar handles secret values natively
 	self.NativeBar:SetMinMaxValues(minval, maxval)
-	-- Store non-secret values for GetMinMaxValues compatibility
+
+	-- Store non-secret values for GetMinMaxValues compatibility and visual updates
 	if not issecretvalue or (not issecretvalue(minval) and not issecretvalue(maxval)) then
 		if maxval > minval then
 			self.MinVal = minval
@@ -290,90 +367,102 @@ local function SetMinMaxValues_Native(self, minval, maxval)
 			self.MinVal = 0
 			self.MaxVal = 1
 		end
+
+		-- Clamp Value within new range
+		if self.Value > self.MaxVal then self.Value = self.MaxVal
+		elseif self.Value < self.MinVal then self.Value = self.MinVal end
+
+		-- Recalculate percentage
+		local range = self.MaxVal - self.MinVal
+		if range > 0 then
+			self.LastPercent = (self.Value - self.MinVal) / range
+			if self.LastPercent < 0.01 then self.LastPercent = 0.01 end
+		end
+
+		UpdateVisualBar_Hybrid(self)
 	end
 end
 
-local function GetMinMaxValues_Native(self)
+local function GetMinMaxValues_Hybrid(self)
 	return self.MinVal, self.MaxVal
 end
 
--- SetStatusBarTexture for native StatusBar
-local function SetStatusBarTexture_Native(self, texture)
+-- SetStatusBarTexture for hybrid StatusBar
+-- Sets texture on BOTH the native bar (unused but kept for consistency) and the visual bar
+local function SetStatusBarTexture_Hybrid(self, texture)
+	-- Set on native bar (invisible, but keeps API consistent)
 	self.NativeBar:SetStatusBarTexture(texture)
-	-- Store reference to the texture for color operations
-	self.Bar = self.NativeBar:GetStatusBarTexture()
-	-- Also set neutral zone texture if it exists
-	if self.Neutral then
-		self.Neutral:SetTexture(texture)
-	end
+	-- Set on visual bar (this is what the user actually sees)
+	self.VisualBar:SetTexture(texture)
+	-- Also set neutral zone texture
+	self.Neutral:SetTexture(texture)
+	-- Store reference for compatibility (point to visual bar)
+	self.Bar = self.VisualBar
 end
 
--- SetStatusBarColor for native StatusBar
-local function SetStatusBarColor_Native(self, r, g, b, a)
+-- SetStatusBarColor for hybrid StatusBar
+local function SetStatusBarColor_Hybrid(self, r, g, b, a)
 	a = a or 1
+	-- Set on native bar (invisible)
 	self.NativeBar:SetStatusBarColor(r, g, b, a)
-	if self.Neutral then
-		self.Neutral:SetVertexColor(0, 0, 1, a/2)
-	end
+	-- Set on visual bar (what user sees)
+	self.VisualBar:SetVertexColor(r, g, b, a)
+	-- Set neutral zone
+	self.Neutral:SetVertexColor(0, 0, 1, a/2)
 end
 
--- SetStatusBarGradient for native StatusBar
--- Note: Native StatusBar doesn't support gradients directly, so we apply to the texture
-local function SetStatusBarGradient_Native(self, r1, g1, b1, a1, r2, g2, b2, a2)
-	local barTex = self.NativeBar:GetStatusBarTexture()
-	if barTex then
-		SetGradientCompat(barTex, self.Orientation, r1, g1, b1, a1, r2, g2, b2, a2)
-	end
+-- SetStatusBarGradient for hybrid StatusBar
+local function SetStatusBarGradient_Hybrid(self, r1, g1, b1, a1, r2, g2, b2, a2)
+	-- Apply gradient to visual bar
+	SetGradientCompat(self.VisualBar, self.Orientation, r1, g1, b1, a1, r2, g2, b2, a2)
 end
 
--- SetAllColors for native StatusBar
-local function SetAllColors_Native(self, rBar, gBar, bBar, aBar, rBackdrop, gBackdrop, bBackdrop, aBackdrop)
-	-- Set bar color via native StatusBar
+-- SetAllColors for hybrid StatusBar
+local function SetAllColors_Hybrid(self, rBar, gBar, bBar, aBar, rBackdrop, gBackdrop, bBackdrop, aBackdrop)
+	-- Set bar color on both native and visual
 	self.NativeBar:SetStatusBarColor(rBar or 1, gBar or 1, bBar or 1, aBar or 1)
-
-	-- Store color info for compatibility
-	local barTex = self.NativeBar:GetStatusBarTexture()
-	if barTex then
-		barTex.color = {r = rBar or 1, g = gBar or 1, b = bBar or 1, a = aBar or 1}
-	end
+	self.VisualBar:SetVertexColor(rBar or 1, gBar or 1, bBar or 1, aBar or 1)
+	self.VisualBar.color = {r = rBar or 1, g = gBar or 1, b = bBar or 1, a = aBar or 1}
 
 	-- Set neutral zone color
-	if self.Neutral then
-		self.Neutral:SetVertexColor(rBar or 1, gBar or 1, bBar or 1, aBar or 1)
-		self.Neutral.color = {r = rBar or 1, g = gBar or 1, b = bBar or 1, a = aBar or 1}
-	end
+	self.Neutral:SetVertexColor(rBar or 1, gBar or 1, bBar or 1, aBar or 1)
+	self.Neutral.color = {r = rBar or 1, g = gBar or 1, b = bBar or 1, a = aBar or 1}
 
 	-- Set backdrop color
-	if self.Backdrop then
-		self.Backdrop:SetVertexColor(rBackdrop or 1, gBackdrop or 1, bBackdrop or 1, aBackdrop or 1)
-		self.Backdrop.color = {r = rBackdrop or 1, g = gBackdrop or 1, b = bBackdrop or 1, a = aBackdrop or 1}
-	end
+	self.Backdrop:SetVertexColor(rBackdrop or 1, gBackdrop or 1, bBackdrop or 1, aBackdrop or 1)
+	self.Backdrop.color = {r = rBackdrop or 1, g = gBackdrop or 1, b = bBackdrop or 1, a = aBackdrop or 1}
 end
 
--- SetOrientation for native StatusBar
-local function SetOrientation_Native(self, orientation)
+-- SetOrientation for hybrid StatusBar
+local function SetOrientation_Hybrid(self, orientation)
 	if orientation == "VERTICAL" then
 		self.Orientation = orientation
 		self.NativeBar:SetOrientation("VERTICAL")
-		if self.Neutral then
-			self.Neutral:ClearAllPoints()
-			self.Neutral:SetPoint("BOTTOMLEFT")
-			self.Neutral:SetPoint("BOTTOMRIGHT")
-		end
+		-- Update visual bar anchoring
+		self.VisualBar:ClearAllPoints()
+		self.VisualBar:SetPoint("BOTTOMLEFT")
+		self.VisualBar:SetPoint("BOTTOMRIGHT")
+		-- Update neutral zone anchoring
+		self.Neutral:ClearAllPoints()
+		self.Neutral:SetPoint("BOTTOMLEFT")
+		self.Neutral:SetPoint("BOTTOMRIGHT")
 	else
 		self.Orientation = "HORIZONTAL"
 		self.NativeBar:SetOrientation("HORIZONTAL")
-		if self.Neutral then
-			self.Neutral:ClearAllPoints()
-			self.Neutral:SetPoint("TOPLEFT")
-			self.Neutral:SetPoint("BOTTOMLEFT")
-		end
+		-- Update visual bar anchoring
+		self.VisualBar:ClearAllPoints()
+		self.VisualBar:SetPoint("TOPLEFT")
+		self.VisualBar:SetPoint("BOTTOMLEFT")
+		-- Update neutral zone anchoring
+		self.Neutral:ClearAllPoints()
+		self.Neutral:SetPoint("TOPLEFT")
+		self.Neutral:SetPoint("BOTTOMLEFT")
 	end
+	UpdateSize_Hybrid(self)
 end
 
--- SetNeutralZone for native StatusBar
--- Note: Native StatusBar doesn't have a neutral zone concept, so we use an overlay texture
-local function SetNeutralZone_Native(self, minval, maxval, center, barmax)
+-- SetNeutralZone for hybrid StatusBar
+local function SetNeutralZone_Hybrid(self, minval, maxval, center, barmax)
 	if not (minval or maxval) then return end
 
 	if maxval > minval then
@@ -386,49 +475,24 @@ local function SetNeutralZone_Native(self, minval, maxval, center, barmax)
 
 	self.NeutralCenter = center
 
-	-- Update neutral zone overlay position
-	if self.Neutral and barmax and barmax > 0 then
-		local barsize = self:GetWidth()
-		if self.Orientation == "VERTICAL" then
-			barsize = self:GetHeight()
-		end
-
-		local neutralSize = (self.NeutralMax - self.NeutralMin) / barmax
-		local neutralLeft = barsize * ((self.NeutralMin) / barmax)
-		local neutralRight = barsize * ((barmax - self.NeutralMax) / barmax)
-
-		if self.Orientation == "VERTICAL" then
-			self.Neutral:ClearAllPoints()
-			self.Neutral:SetPoint("BOTTOMLEFT", 0, neutralLeft)
-			self.Neutral:SetPoint("TOPRIGHT", 0, -neutralRight)
-		else
-			self.Neutral:ClearAllPoints()
-			self.Neutral:SetPoint("TOPLEFT", neutralLeft, 0)
-			self.Neutral:SetPoint("BOTTOMRIGHT", -neutralRight, 0)
-		end
-	end
+	UpdateVisualBar_Hybrid(self)
 end
 
--- SetTexCoord for native StatusBar
--- Note: Native StatusBar doesn't support custom tex coords on the bar texture in the same way
--- We store the values for compatibility but they won't affect the native bar rendering
-local function SetTexCoord_Native(self, left, right, top, bottom)
+-- SetTexCoord for hybrid StatusBar
+-- This now works properly because we control the visual texture directly
+local function SetTexCoord_Hybrid(self, left, right, top, bottom)
 	self.Left, self.Right, self.Top, self.Bottom = left or 0, right or 1, top or 0, bottom or 1
-	-- Can't apply tex coords to native StatusBar fill - it manages its own texture
+	UpdateVisualBar_Hybrid(self)
 end
 
--- SetBackdropTexCoord for native StatusBar
-local function SetBackdropTexCoord_Native(self, left, right, top, bottom)
-	if self.Backdrop then
-		self.Backdrop:SetTexCoord(left or 0, right or 1, top or 0, bottom or 1)
-	end
+-- SetBackdropTexCoord for hybrid StatusBar
+local function SetBackdropTexCoord_Hybrid(self, left, right, top, bottom)
+	self.Backdrop:SetTexCoord(left or 0, right or 1, top or 0, bottom or 1)
 end
 
--- SetBackdropTexture for native StatusBar
-local function SetBackdropTexture_Native(self, texture)
-	if self.Backdrop then
-		self.Backdrop:SetTexture(texture)
-	end
+-- SetBackdropTexture for hybrid StatusBar
+local function SetBackdropTexture_Hybrid(self, texture)
+	self.Backdrop:SetTexture(texture)
 end
 
 
@@ -438,52 +502,67 @@ end
 
 function CreateNeatPlatesStatusbar(parent)
 	if isMidnight then
-		-- 12.0.0+: Use native StatusBar as primary visual element
-		-- This handles secret values natively without any workarounds
+		-- 12.0.0+: Hybrid approach
+		-- - Native StatusBar for VALUE handling (accepts secret values, but is INVISIBLE)
+		-- - Visual TEXTURE layer for APPEARANCE (preserves rounded look via SetTexCoord)
 		local frame = CreateFrame("Frame", nil, parent, NeatPlatesBackdrop)
 		frame:SetHeight(1)
 		frame:SetWidth(1)
 
-		-- State variables (for compatibility)
+		-- State variables (same as legacy)
 		frame.Value, frame.MinVal, frame.MaxVal, frame.Orientation = 1, 0, 1, "HORIZONTAL"
 		frame.NeutralMin, frame.NeutralMax, frame.NeutralCenter = 0, 0, 0.5
 		frame.Left, frame.Right, frame.Top, frame.Bottom = 0, 1, 0, 1
+		frame.LastPercent = 1  -- Track last known percentage for visual updates
 
-		-- Create backdrop texture behind the bar
+		-- Create backdrop texture behind the bar (same as legacy)
 		frame.Backdrop = frame:CreateTexture(nil, "BACKGROUND")
 		frame.Backdrop:SetAllPoints(frame)
 
-		-- Create neutral zone overlay texture
+		-- Create the VISUAL bar texture (this is what the user sees)
+		-- Uses BORDER layer like legacy implementation
+		frame.VisualBar = frame:CreateTexture(nil, "BORDER")
+		frame.VisualBar:SetPoint("TOPLEFT")
+		frame.VisualBar:SetPoint("BOTTOMLEFT")
+
+		-- Create neutral zone overlay texture (same as legacy)
 		frame.Neutral = frame:CreateTexture(nil, "OVERLAY")
 		frame.Neutral:Hide()
 
-		-- Create native StatusBar as the primary bar element
+		-- Create native StatusBar for VALUE STORAGE ONLY (invisible)
+		-- This accepts secret values but we don't use it for display
 		local nativeBar = CreateFrame("StatusBar", nil, frame)
 		nativeBar:SetAllPoints(frame)
 		nativeBar:SetMinMaxValues(0, 1)
 		nativeBar:SetValue(1)
-		nativeBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+		-- Make the native bar's texture invisible - we only use it for value storage
+		nativeBar:SetStatusBarTexture("")
+		nativeBar:SetAlpha(0)  -- Extra safety: make entire StatusBar invisible
 		frame.NativeBar = nativeBar
 
-		-- Store reference to status bar texture as .Bar for compatibility
-		frame.Bar = nativeBar:GetStatusBarTexture()
+		-- Store reference to visual bar as .Bar for compatibility
+		frame.Bar = frame.VisualBar
 
-		-- Assign native StatusBar methods
-		frame.SetValue = SetValue_Native
-		frame.SetValuePercent = SetValuePercent_Native
-		frame.SetValueFromUnit = SetValueFromUnit_Native
-		frame.SetPowerFromUnit = SetPowerFromUnit_Native
-		frame.SetNeutralZone = SetNeutralZone_Native
-		frame.SetMinMaxValues = SetMinMaxValues_Native
-		frame.GetMinMaxValues = GetMinMaxValues_Native
-		frame.SetOrientation = SetOrientation_Native
-		frame.SetStatusBarColor = SetStatusBarColor_Native
-		frame.SetStatusBarGradient = SetStatusBarGradient_Native
-		frame.SetAllColors = SetAllColors_Native
-		frame.SetStatusBarTexture = SetStatusBarTexture_Native
-		frame.SetTexCoord = SetTexCoord_Native
-		frame.SetBackdropTexCoord = SetBackdropTexCoord_Native
-		frame.SetBackdropTexture = SetBackdropTexture_Native
+		-- Assign hybrid methods
+		frame.SetValue = SetValue_Hybrid
+		frame.SetValuePercent = SetValuePercent_Hybrid
+		frame.SetValueFromUnit = SetValueFromUnit_Hybrid
+		frame.SetPowerFromUnit = SetPowerFromUnit_Hybrid
+		frame.SetNeutralZone = SetNeutralZone_Hybrid
+		frame.SetMinMaxValues = SetMinMaxValues_Hybrid
+		frame.GetMinMaxValues = GetMinMaxValues_Hybrid
+		frame.SetOrientation = SetOrientation_Hybrid
+		frame.SetStatusBarColor = SetStatusBarColor_Hybrid
+		frame.SetStatusBarGradient = SetStatusBarGradient_Hybrid
+		frame.SetAllColors = SetAllColors_Hybrid
+		frame.SetStatusBarTexture = SetStatusBarTexture_Hybrid
+		frame.SetTexCoord = SetTexCoord_Hybrid
+		frame.SetBackdropTexCoord = SetBackdropTexCoord_Hybrid
+		frame.SetBackdropTexture = SetBackdropTexture_Hybrid
+
+		-- OnSizeChanged handler (like legacy)
+		frame:SetScript("OnSizeChanged", UpdateSize_Hybrid)
+		UpdateSize_Hybrid(frame)
 
 		return frame
 	else
