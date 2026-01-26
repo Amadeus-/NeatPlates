@@ -3,6 +3,11 @@ local AddonName, HubData = ...;
 local LocalVars = NeatPlatesHubDefaults
 local L = LibStub("AceLocale-3.0"):GetLocale("NeatPlates")
 
+-- Version detection for 12.0.0+ (Midnight)
+-- In WoW 12.0+, aura ownership (caster) is a secret value during combat,
+-- making "Show Mine" vs "Show All" filters impossible to implement reliably.
+-- We detect this at load time and bypass ownership filtering for 12.0+ users.
+local isWoW12Plus = NeatPlatesHubHelpers and NeatPlatesHubHelpers.isMidnight or (select(4, GetBuildInfo()) >= 120000)
 
 -- Widget Helpers
 local WidgetLib = NeatPlatesWidgets
@@ -483,8 +488,26 @@ local function GetAuraColor(aura)
 end
 
 -- Helper function to safely check if caster matches a value (handles 12.0.0+ secret values)
-local function CasterMatches(caster, value)
-	if issecretvalue and issecretvalue(caster) then return false end
+-- For pre-12.0: Returns true/false based on caster comparison
+-- For 12.0+: This function is typically bypassed by isWoW12Plus checks,
+--            but if called, it will return false when values are secret
+local function CasterMatches(caster, value, isFromPlayer)
+	-- In 12.0.0+, caster (sourceUnit) can be a secret value
+	-- Use the isFromPlayer flag when available (set from isFromPlayerOrPlayerPet aura field)
+	if value == "player" or value == "pet" then
+		-- For player/pet checks, prefer the isFromPlayer flag
+		if isFromPlayer ~= nil then
+			-- Check if isFromPlayer itself is a secret value
+			if issecretvalue and issecretvalue(isFromPlayer) then
+				return false
+			end
+			return isFromPlayer
+		end
+	end
+	-- Fallback to direct comparison if caster is not secret
+	if issecretvalue and issecretvalue(caster) then
+		return false
+	end
 	return caster == value
 end
 
@@ -493,7 +516,11 @@ local DebuffPrefixModes = {
 		return true
 	end,
 	["my"] = function(aura)
-		if CasterMatches(aura.caster, "player") or CasterMatches(aura.caster, "pet") then return true end
+		-- For WoW 12.0+, ownership checks are bypassed at a higher level (SmartFilterMode)
+		-- This function is only called for pre-12.0 or for custom aura lists
+		local playerMatch = CasterMatches(aura.caster, "player", aura.isFromPlayer)
+		local petMatch = CasterMatches(aura.caster, "pet", aura.isFromPlayer)
+		return playerMatch or petMatch
 	end,
 	-- ["other"] = function(aura)
 	-- 	--print(aura.caster, aura.name)
@@ -512,34 +539,104 @@ local function SmartFilterMode(aura)
 	local ShowThisAura = false
 	local AuraPriority = 20
 
-	-- Show All Buffs and Debuffs
-	if (LocalVars.WidgetBuffFilter == 3 and aura.effect == "HELPFUL") or (LocalVars.WidgetDebuffFilter == 3 and aura.effect == "HARMFUL") then
-		ShowThisAura = true
+	-- Debug: Log filter state
+	local debugEnabled = NEATPLATES_DEBUG_AURAS and NeatPlatesUtility and NeatPlatesUtility.Debug
+	local safeName = aura.name
+	if debugEnabled then
+		if issecretvalue and issecretvalue(safeName) then safeName = "[SECRET]" end
+		NeatPlatesUtility.Debug.Log("Filter", "SmartFilterMode for: " .. tostring(safeName))
+		NeatPlatesUtility.Debug.Log("Filter", "  effect: " .. tostring(aura.effect))
+		NeatPlatesUtility.Debug.Log("Filter", "  WidgetBuffFilter: " .. tostring(LocalVars.WidgetBuffFilter))
+		NeatPlatesUtility.Debug.Log("Filter", "  WidgetDebuffFilter: " .. tostring(LocalVars.WidgetDebuffFilter))
+		NeatPlatesUtility.Debug.Log("Filter", "  isWoW12Plus: " .. tostring(isWoW12Plus))
 	end
 
-	-- My own Buffs and Debuffs
-	if (CasterMatches(aura.caster, "player") or CasterMatches(aura.caster, "pet")) and aura.baseduration and aura.baseduration < 150 then
-		if (LocalVars.WidgetBuffFilter == 2 and aura.effect == "HELPFUL") or (LocalVars.WidgetDebuffFilter == 2 and aura.effect == "HARMFUL") then
-			ShowThisAura = true
+	-- Determine effective filter values
+	-- WoW 12.0.0+ VERSION-AWARE FILTER HANDLING:
+	-- In WoW 12.0+, aura ownership (caster) is always a secret value during combat,
+	-- making "Show Mine" impossible to implement reliably. For 12.0+ users:
+	-- - "Show Mine" (filter == 2) is treated as "Show All" (filter == 3)
+	-- - Pre-12.0 users get the original behavior unchanged
+	local effectiveBuffFilter = LocalVars.WidgetBuffFilter
+	local effectiveDebuffFilter = LocalVars.WidgetDebuffFilter
+
+	if isWoW12Plus then
+		-- Upgrade "Show Mine" to "Show All" for 12.0+ users
+		if effectiveBuffFilter == 2 then effectiveBuffFilter = 3 end
+		if effectiveDebuffFilter == 2 then effectiveDebuffFilter = 3 end
+		if debugEnabled then
+			NeatPlatesUtility.Debug.Log("Filter", "  (12.0+) effectiveBuffFilter: " .. tostring(effectiveBuffFilter))
+			NeatPlatesUtility.Debug.Log("Filter", "  (12.0+) effectiveDebuffFilter: " .. tostring(effectiveDebuffFilter))
 		end
 	end
 
+	-- Show All Buffs and Debuffs (or "Show Mine" upgraded to "Show All" for 12.0+)
+	if (effectiveBuffFilter == 3 and aura.effect == "HELPFUL") or (effectiveDebuffFilter == 3 and aura.effect == "HARMFUL") then
+		ShowThisAura = true
+		if debugEnabled then
+			NeatPlatesUtility.Debug.Log("Filter", "  PASS: Show All filter matched")
+		end
+	end
 
-	-- Evaluate for further filtering
+	-- My own Buffs and Debuffs (pre-12.0 only, since 12.0+ filter==2 is already upgraded to 3 above)
+	if not isWoW12Plus then
+		local playerMatch = CasterMatches(aura.caster, "player", aura.isFromPlayer)
+		local petMatch = CasterMatches(aura.caster, "pet", aura.isFromPlayer)
+		local isMyCast = playerMatch or petMatch
+		local durationCheck = aura.baseduration and aura.baseduration < 150
+
+		if debugEnabled then
+			NeatPlatesUtility.Debug.Log("Filter", "  isMyCast: " .. tostring(isMyCast))
+			NeatPlatesUtility.Debug.Log("Filter", "  durationCheck (<150): " .. tostring(durationCheck))
+		end
+
+		if isMyCast and durationCheck then
+			if (LocalVars.WidgetBuffFilter == 2 and aura.effect == "HELPFUL") or (LocalVars.WidgetDebuffFilter == 2 and aura.effect == "HARMFUL") then
+				ShowThisAura = true
+				if debugEnabled then
+					NeatPlatesUtility.Debug.Log("Filter", "  PASS: My aura filter matched")
+				end
+			end
+		end
+	end
+
+	-- Evaluate for further filtering via custom aura lists
 	local prefix, priority = GetPrefixPriority(aura)
+	if debugEnabled then
+		NeatPlatesUtility.Debug.Log("Filter", "  prefix from list: " .. tostring(prefix) .. ", priority: " .. tostring(priority))
+	end
+
 	-- If the aura is mentioned in the list, evaluate the instruction...
 	if prefix then
-		local show = DebuffPrefixModes[prefix](aura)
+		local show
 
-		-- print(aura.name, show, prefix, priority)
-		if show == true then
-			return true, (priority or 20)		-- , r, g, b
+		-- For WoW 12.0+ with "my" prefix in custom lists, treat as "all" since ownership is unknowable
+		if isWoW12Plus and prefix == "my" then
+			show = true
+			if debugEnabled then
+				NeatPlatesUtility.Debug.Log("Filter", "  (12.0+) 'my' prefix treated as 'all'")
+			end
 		else
+			show = DebuffPrefixModes[prefix](aura)
+		end
+
+		if show then
+			if debugEnabled then
+				NeatPlatesUtility.Debug.Log("Filter", "  FINAL: PASS (from aura list)")
+			end
+			return true, (priority or 20)
+		else
+			if debugEnabled then
+				NeatPlatesUtility.Debug.Log("Filter", "  FINAL: BLOCKED by aura list prefix")
+			end
 			return false
 		end
-	--- When no prefix is mentioned, return the aura.
+	-- When no prefix is mentioned, return the aura filter result
 	else
-		return ShowThisAura, 20		-- , r, g, b
+		if debugEnabled then
+			NeatPlatesUtility.Debug.Log("Filter", "  FINAL: " .. (ShowThisAura and "PASS" or "BLOCKED") .. " (SmartFilter result)")
+		end
+		return ShowThisAura, 20
 	end
 
 end
@@ -576,6 +673,15 @@ local function TrackDispelType(dispelType)
 end
 
 local function DebuffFilter(aura)
+	-- Debug: Log entry
+	local debugEnabled = NEATPLATES_DEBUG_AURAS and NeatPlatesUtility and NeatPlatesUtility.Debug
+	if debugEnabled then
+		local safeName = aura.name
+		if issecretvalue and issecretvalue(safeName) then safeName = "[SECRET]" end
+		NeatPlatesUtility.Debug.Log("Filter", "========================================")
+		NeatPlatesUtility.Debug.Log("Filter", "DebuffFilter called for: " .. tostring(safeName))
+	end
+
 	-- Get aura type safely (may be secret value in 12.0.0+)
 	local auraType = aura.type
 	local auraTypeIsSecret = issecretvalue and issecretvalue(auraType)
@@ -583,22 +689,38 @@ local function DebuffFilter(aura)
 	-- Purgeable Buff
 	if LocalVars.WidgetBuffPurgeable and aura.effect == "HELPFUL" and (not auraTypeIsSecret and auraType == "Magic") and aura.reaction == 1 then
 		local color = LocalVars.ColorBuffPurgeable
+		if debugEnabled then
+			NeatPlatesUtility.Debug.Log("Filter", "  PASS: Purgeable buff")
+		end
 		return true, 10, color.r, color.g, color.b, color.a
 	end
 	-- Sootheable Enrage Buff
 	if LocalVars.WidgetBuffEnrage and aura.effect == "HELPFUL" and (not auraTypeIsSecret and auraType == "") and aura.reaction == 1 then
 		local color = LocalVars.ColorBuffEnrage
+		if debugEnabled then
+			NeatPlatesUtility.Debug.Log("Filter", "  PASS: Sootheable enrage")
+		end
 		return true, 10, color.r, color.g, color.b, color.a
 	end
 	-- Dispellable Debuff
 	if (LocalVars.WidgetAuraTrackDispelFriendly and aura.reaction == AURA_TARGET_FRIENDLY) then
 		if (aura.effect == "HARMFUL" and TrackDispelType(auraType)) then
 			local r, g, b = GetAuraColor(aura)
+			if debugEnabled then
+				NeatPlatesUtility.Debug.Log("Filter", "  PASS: Dispellable debuff")
+			end
 			return true, 10, r, g, b, a
 		end
 	end
 
-	return SmartFilterMode(aura)
+	if debugEnabled then
+		NeatPlatesUtility.Debug.Log("Filter", "  Calling SmartFilterMode...")
+	end
+	local result, priority, r, g, b, a = SmartFilterMode(aura)
+	if debugEnabled then
+		NeatPlatesUtility.Debug.Log("Filter", "  DebuffFilter FINAL RESULT: " .. tostring(result) .. ", priority=" .. tostring(priority))
+	end
+	return result, priority, r, g, b, a
 end
 
 local function EmphasizedFilter(aura)
@@ -606,8 +728,14 @@ local function EmphasizedFilter(aura)
 	local r, g, b = GetAuraColor(aura)
 
 	if prefix and priority then
-		local show = DebuffPrefixModes[prefix](aura)
-		if show == true then
+		local show
+		-- For WoW 12.0+ with "my" prefix, treat as "all" since ownership is unknowable
+		if isWoW12Plus and prefix == "my" then
+			show = true
+		else
+			show = DebuffPrefixModes[prefix](aura)
+		end
+		if show then
 			return true, priority, r, g, b
 		end
 	elseif priority then

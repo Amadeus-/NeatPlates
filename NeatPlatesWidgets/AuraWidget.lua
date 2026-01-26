@@ -9,9 +9,134 @@
 
 local LibClassicDurations
 local _UnitAura = UnitAura
-if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
-	-- 12.0.0+: Access auraData fields directly instead of unpacking
-	-- AuraUtil.UnpackAuraData fails because fields may be SECRET values
+
+-- 12.0.0+ Secret Value Handling:
+-- In WoW 12.0.0+, aura data fields can be "secret values" during combat that cannot be
+-- compared, printed, or used as table keys. However, display APIs (SetTexture, SetText,
+-- SetCooldown) all accept secret values with SecretArguments = "AllowedWhenTainted".
+--
+-- Key APIs that return usable values even with secrets:
+-- - C_UnitAuras.GetAuraDuration(unit, auraInstanceID) -> LuaDurationObject (for cooldowns)
+-- - C_UnitAuras.GetAuraApplicationDisplayCount(unit, auraInstanceID, min, max) -> string (for stacks)
+-- - C_UnitAuras.GetAuraBaseDuration(unit, auraInstanceID) -> number (for pandemic)
+-- - issecretvalue(value) -> checks if a value is secret before comparison
+--
+-- NOTE: UnitIsUnit() does NOT accept secret values. Use isFromPlayerOrPlayerPet field instead.
+
+-- Check if we have the modern 12.0.0+ APIs with secret value support
+local HAS_SECRET_VALUE_SUPPORT = (issecretvalue ~= nil)
+local HAS_DURATION_OBJECT_API = (C_UnitAuras and C_UnitAuras.GetAuraDuration ~= nil)
+local HAS_STACK_DISPLAY_API = (C_UnitAuras and C_UnitAuras.GetAuraApplicationDisplayCount ~= nil)
+local HAS_BASE_DURATION_API = (C_UnitAuras and C_UnitAuras.GetAuraBaseDuration ~= nil)
+
+-- Helper function to safely check if caster is the player
+-- In 12.0.0+, sourceUnit can be a secret value that cannot be used with UnitIsUnit
+-- We prefer the isFromPlayerOrPlayerPet field when available, otherwise check for secret
+local function IsCasterPlayer(sourceUnit, isFromPlayerOrPlayerPet)
+	-- Prefer the boolean flag if available (works with secrets, doesn't require UnitIsUnit)
+	if isFromPlayerOrPlayerPet ~= nil then
+		-- The flag itself might be secret in some edge cases
+		if HAS_SECRET_VALUE_SUPPORT and issecretvalue(isFromPlayerOrPlayerPet) then
+			return false  -- Can't determine, assume not player
+		end
+		return isFromPlayerOrPlayerPet
+	end
+	-- Fallback to UnitIsUnit only if sourceUnit is not nil and not secret
+	if sourceUnit == nil then return false end
+	if HAS_SECRET_VALUE_SUPPORT and issecretvalue(sourceUnit) then
+		return false  -- Can't use UnitIsUnit with secret values
+	end
+	return UnitIsUnit("player", sourceUnit)
+end
+
+-- Helper function to safely get a value, returning nil if it's secret
+local function SafeValue(value)
+	if HAS_SECRET_VALUE_SUPPORT and issecretvalue(value) then
+		return nil
+	end
+	return value
+end
+
+-- 12.0.0+: Use C_UnitAuras.GetUnitAuras() which returns full aura data tables
+-- The data fields may be secret values, but we handle that when displaying
+local _GetUnitAurasForNameplate = nil
+if C_UnitAuras and C_UnitAuras.GetUnitAuras then
+	-- Function to get all auras for a unit
+	-- Returns raw aura data with auraInstanceID preserved for later API calls
+	_GetUnitAurasForNameplate = function(unit)
+		local auras = {}
+		local seenIds = {}
+
+		-- Debug: Log API calls
+		if NEATPLATES_DEBUG_AURAS and NeatPlatesUtility and NeatPlatesUtility.Debug then
+			NeatPlatesUtility.Debug.Log("Aura", "_GetUnitAurasForNameplate called for: " .. tostring(unit))
+		end
+
+		-- First, get nameplate-specific auras
+		local debuffsNP = C_UnitAuras.GetUnitAuras(unit, "HARMFUL|INCLUDE_NAME_PLATE_ONLY") or {}
+		local buffsNP = C_UnitAuras.GetUnitAuras(unit, "HELPFUL|INCLUDE_NAME_PLATE_ONLY") or {}
+
+		-- Debug: Log counts from each filter
+		if NEATPLATES_DEBUG_AURAS and NeatPlatesUtility and NeatPlatesUtility.Debug then
+			NeatPlatesUtility.Debug.Log("Aura", "  HARMFUL|INCLUDE_NAME_PLATE_ONLY: " .. #debuffsNP .. " auras")
+			NeatPlatesUtility.Debug.Log("Aura", "  HELPFUL|INCLUDE_NAME_PLATE_ONLY: " .. #buffsNP .. " auras")
+		end
+
+		for _, auraData in ipairs(debuffsNP) do
+			if not seenIds[auraData.auraInstanceID] then
+				seenIds[auraData.auraInstanceID] = true
+				auraData.isHarmful = true
+				auraData.isHelpful = false
+				table.insert(auras, auraData)
+			end
+		end
+
+		for _, auraData in ipairs(buffsNP) do
+			if not seenIds[auraData.auraInstanceID] then
+				seenIds[auraData.auraInstanceID] = true
+				auraData.isHarmful = false
+				auraData.isHelpful = true
+				table.insert(auras, auraData)
+			end
+		end
+
+		-- Also get all other auras (for "Show All" filter modes)
+		local allDebuffs = C_UnitAuras.GetUnitAuras(unit, "HARMFUL") or {}
+		local allBuffs = C_UnitAuras.GetUnitAuras(unit, "HELPFUL") or {}
+
+		-- Debug: Log counts from each filter
+		if NEATPLATES_DEBUG_AURAS and NeatPlatesUtility and NeatPlatesUtility.Debug then
+			NeatPlatesUtility.Debug.Log("Aura", "  HARMFUL (all): " .. #allDebuffs .. " auras")
+			NeatPlatesUtility.Debug.Log("Aura", "  HELPFUL (all): " .. #allBuffs .. " auras")
+		end
+
+		for _, auraData in ipairs(allDebuffs) do
+			if not seenIds[auraData.auraInstanceID] then
+				seenIds[auraData.auraInstanceID] = true
+				auraData.isHarmful = true
+				auraData.isHelpful = false
+				table.insert(auras, auraData)
+			end
+		end
+
+		for _, auraData in ipairs(allBuffs) do
+			if not seenIds[auraData.auraInstanceID] then
+				seenIds[auraData.auraInstanceID] = true
+				auraData.isHarmful = false
+				auraData.isHelpful = true
+				table.insert(auras, auraData)
+			end
+		end
+
+		-- Debug: Log final count
+		if NEATPLATES_DEBUG_AURAS and NeatPlatesUtility and NeatPlatesUtility.Debug then
+			NeatPlatesUtility.Debug.Log("Aura", "  Total unique auras: " .. #auras)
+		end
+
+		return auras
+	end
+
+	-- Legacy wrapper for backwards compatibility (uses GetAuraDataByIndex)
 	_UnitAura = function(unit, index, filter)
 		local auraData = C_UnitAuras.GetAuraDataByIndex(unit, index, filter)
 		if not auraData then return nil end
@@ -25,6 +150,8 @@ if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
 end
 
 if NEATPLATES_IS_CLASSIC_ERA then
+	-- Classic Era uses different aura handling, disable the modern GetUnitAuras approach
+	_GetUnitAurasForNameplate = nil
 	LibClassicDurations = LibStub("LibClassicDurations", true)
 	if LibClassicDurations then
 		LibClassicDurations:Register("NeatPlates")
@@ -38,6 +165,16 @@ end
 local IsSpellKnown = C_SpellBook and C_SpellBook.IsSpellKnown or IsSpellKnown
 
 NeatPlatesWidgets.DebuffWidgetBuild = 2
+
+-- Debug flag for aura tracing - toggle with /npdebug auras
+NEATPLATES_DEBUG_AURAS = false
+
+-- Helper function for debug output
+local function DebugAura(msg)
+	if NEATPLATES_DEBUG_AURAS and NeatPlatesUtility and NeatPlatesUtility.Debug then
+		NeatPlatesUtility.Debug.Log("Aura", msg)
+	end
+end
 
 local PlayerGUID = UnitGUID("player")
 local PolledHideIn = NeatPlatesWidgets.PolledHideIn
@@ -209,12 +346,20 @@ end
 
 local function UpdateAuraHighlighting(frame, aura)
 		local r, g, b, a = aura.r, aura.g, aura.b, aura.a
-		local glowType = aura.type
-		local expiration = aura.expiration-GetTime()
-		local pandemicThreshold = aura.duration and aura.expiration and aura.duration > 0 and expiration <= aura.baseduration*0.3
+		local glowType = aura.type  -- May be secret but not used in comparisons here
+		local duration = aura.duration or 0
+		local expirationTime = aura.expiration or 0
+		local baseduration = aura.baseduration or duration
+		local expiration = expirationTime > 0 and (expirationTime - GetTime()) or 0
+		local pandemicThreshold = duration > 0 and expirationTime > 0 and baseduration > 0 and expiration <= baseduration * 0.3
 		local removeGlow = true
-	-- Pandemic and other Hightlighting
-		if (aura.effect == "HELPFUL" and ButtonGlowEnabled[aura.type]) or (PandemicEnabled and pandemicThreshold and ButtonGlowEnabled["Pandemic"]) then
+
+	-- Pandemic and other Highlighting
+	-- Note: ButtonGlowEnabled uses aura.type as key - we use SafeValue to get nil if secret
+		local safeType = SafeValue(aura.type)
+		local typeGlowEnabled = safeType and ButtonGlowEnabled[safeType]
+
+		if (aura.effect == "HELPFUL" and typeGlowEnabled) or (PandemicEnabled and pandemicThreshold and ButtonGlowEnabled["Pandemic"]) then
 			removeGlow = false
 			frame.BorderHighlight:Hide()
 			frame.Border:Hide()
@@ -236,8 +381,8 @@ local function UpdateAuraHighlighting(frame, aura)
 		-- Remove ButtonGlow if appropriate
 		if frame.__LBGoverlay and removeGlow then ButtonGlow.HideOverlayGlow(frame) end
 
-		if PandemicEnabled and not pandemicThreshold and aura.duration > 0 then
-			local timeLeft = math.max(expiration-aura.baseduration*0.3, 0);
+		if PandemicEnabled and not pandemicThreshold and duration > 0 and baseduration > 0 then
+			local timeLeft = math.max(expiration - baseduration * 0.3, 0)
 			if timeLeft > 0 then
 				if frame.PandemicTimer then frame.PandemicTimer:Cancel() end
 				frame.PandemicTimer = C_Timer.NewTimer(timeLeft, function() UpdateAuraHighlighting(frame, aura) end)
@@ -246,37 +391,87 @@ local function UpdateAuraHighlighting(frame, aura)
 end
 
 local function UpdateIcon(frame, aura)
-	if frame and aura and aura.texture and aura.expiration then
-		-- Icon
+	-- Early exit if no aura provided (used for cleanup of empty slots)
+	if not aura then
+		if frame then
+			frame:Hide()
+		end
+		return
+	end
+
+	-- Check for valid aura using auraInstanceID (always a readable integer, never secret)
+	-- In 12.0.0+, aura.texture is a secret value that cannot be used in boolean checks,
+	-- but it CAN be passed directly to SetTexture() which accepts secret values.
+	-- We check auraInstanceID instead since it's always a plain integer.
+	local hasValidAura = frame and (aura.auraInstanceID or aura.texture)
+
+	if hasValidAura then
+		-- Icon - SetTexture accepts secret values (SecretArguments = "AllowedWhenTainted")
 		frame.Icon:SetTexture(aura.texture)
 
-		-- Stacks
-		if not HideAuraStacks and aura.stacks and aura.stacks > 1 then frame.Stacks:SetText(aura.stacks)
-		else frame.Stacks:SetText("") end
+		-- Stacks - SetText accepts secret values
+		if not HideAuraStacks and aura.stacks and aura.stacks > 1 then
+			frame.Stacks:SetText(aura.stacks)
+		else
+			frame.Stacks:SetText("")
+		end
 
-		-- Hightlighting
+		-- Highlighting
 		UpdateAuraHighlighting(frame, aura)
 
-		-- [[ Cooldown
-		frame.Cooldown.noCooldownCount = not HideAuraDuration -- Disable OmniCC interaction
-		if aura.duration and aura.duration > 0 and aura.expiration and aura.expiration > 0 then
-			--SetCooldown(frame.Cooldown, aura.expiration-aura.duration, aura.duration+.25)	-- (Clean Version)
-			frame.Cooldown:SetCooldown(aura.expiration-aura.duration, aura.duration+.25)
+		-- Cooldown - Use duration object API if available (handles secrets properly)
+		-- In 12.0.0+, duration/expirationTime are secret values, so we must use the
+		-- built-in Cooldown countdown numbers instead of the custom TimeLeft text
+		local useDurationObjectAPI = aura.durationObject and frame.Cooldown.SetCooldownFromDurationObject
 
+		if useDurationObjectAPI then
+			-- WoW 12.0.0+: Use the LuaDurationObject API
+			-- Enable the built-in countdown numbers since we can't read the expiration time
+			if not HideAuraDuration then
+				frame.Cooldown:SetHideCountdownNumbers(false)
+				frame.Cooldown.noCooldownCount = false  -- Allow OmniCC if user has it
+			else
+				frame.Cooldown:SetHideCountdownNumbers(true)
+				frame.Cooldown.noCooldownCount = true
+			end
+			-- Use aura display timing mode for correct synchronization
+			if frame.Cooldown.SetUseAuraDisplayTime then
+				frame.Cooldown:SetUseAuraDisplayTime(true)
+			end
+			frame.Cooldown:SetCooldownFromDurationObject(aura.durationObject, true)
 			frame.Cooldown:SetDrawSwipe(not HideCooldownSpiral)
 			frame.Cooldown:SetDrawEdge(not HideCooldownSpiral)
-
+			-- Hide custom TimeLeft text - the built-in countdown handles it
+			frame.TimeLeft:SetText("")
+		elseif aura.duration and aura.duration > 0 and aura.expiration and aura.expiration > 0 then
+			-- Legacy path for pre-12.0.0 or when duration values are available
+			-- Use custom TimeLeft text, hide built-in countdown
+			frame.Cooldown:SetHideCountdownNumbers(true)
+			frame.Cooldown.noCooldownCount = not HideAuraDuration
+			if frame.Cooldown.SetUseAuraDisplayTime then
+				frame.Cooldown:SetUseAuraDisplayTime(false)
+			end
+			frame.Cooldown:SetCooldown(aura.expiration - aura.duration, aura.duration + 0.25)
+			frame.Cooldown:SetDrawSwipe(not HideCooldownSpiral)
+			frame.Cooldown:SetDrawEdge(not HideCooldownSpiral)
+			-- Use custom TimeLeft text for the countdown
+			UpdateWidgetTime(frame, aura.expiration)
 		else
-			--SetCooldown(frame.Cooldown, 0, 0)	-- Clear Cooldown (Clean Version)
+			-- No duration info - just show static icon (no cooldown spiral or timer)
+			frame.Cooldown:SetHideCountdownNumbers(true)
 			frame.Cooldown:SetCooldown(0, 0)
+			frame.TimeLeft:SetText("")
 		end
-		--]]
 
-		-- Expiration
-		UpdateWidgetTime(frame, aura.expiration)
 		frame:Show()
-		--if aura.expiration ~= 0 then PolledHideIn(frame, aura.expiration) end
-		PolledHideIn(frame, aura.expiration, "UpdateIcon")
+
+
+		-- Only set expiration hide timer if we have a valid expiration time
+		-- In 12.0.0+, expiration may be 0 (secret value), but UNIT_AURA events will handle updates
+		local expirationTime = aura.expiration or 0
+		if expirationTime > 0 then
+			PolledHideIn(frame, expirationTime, "UpdateIcon")
+		end
 	elseif frame then
 		PolledHideIn(frame, 0)
 	end
@@ -300,99 +495,220 @@ local function UpdateIconGrid(frame, unitid)
 		local storedAuraCount = 0
 		local emphasizedAuras = {}
 
-		-- Cache displayable auras
-		------------------------------------------------------------------------------------------------------
-		-- This block will go through the auras on the unit and make a list of those that should
-		-- be displayed, listed by priority.
-		local auraIndex = 0
-		local moreAuras = true
-
-		local searchedDebuffs, searchedBuffs = false, false
-		local auraFilter = "HARMFUL"
-
 		AuraCache[unitid] = {} -- Clear cache for unit
 
-		repeat
+		-- Debug: Log which unit we're processing
+		DebugAura("UpdateIconGrid for: " .. unitid .. " - " .. (unitReaction == AURA_TARGET_FRIENDLY and "FRIENDLY" or "HOSTILE"))
 
-			auraIndex = auraIndex + 1
+		-- 12.0.0+: Use GetUnitAuras with INCLUDE_NAME_PLATE_ONLY filter for reliable aura data
+		-- Aura data fields may be secret values - use helper APIs and UnitIsUnit for comparisons
+		if _GetUnitAurasForNameplate then
+			local allAuras = _GetUnitAurasForNameplate(unitid)
+			DebugAura("Total auras returned by API: " .. #allAuras)
 
-			local aura = {}
+			local auraIndex = 0
+			for _, auraData in ipairs(allAuras) do
+				auraIndex = auraIndex + 1
+				local aura = {}
+				local auraInstanceID = auraData.auraInstanceID
 
-			do
-				local name, icon, stacks, auraType, duration, expiration, caster, canStealOrPurge, nameplateShowPersonal, spellid = _UnitAura(unitid, auraIndex, auraFilter)		-- UnitaAura
-
-				aura.name = name
-				aura.texture = icon
-				aura.stacks = stacks
-				aura.type = auraType
-				aura.effect = auraFilter
-				aura.duration = duration
+				-- Map aura data to NeatPlates format
+				-- These fields may be secret values but can be passed directly to display APIs
+				aura.name = auraData.name
+				aura.texture = auraData.icon
+				aura.type = auraData.dispelName
+				aura.effect = auraData.isHarmful and "HARMFUL" or "HELPFUL"
 				aura.reaction = unitReaction
-				aura.expiration = expiration
-				aura.caster = caster
-				aura.spellid = spellid
-				aura.unit = unitid 		-- unitid of the plate
+				aura.caster = auraData.sourceUnit
+				aura.unit = unitid
+				aura.auraInstanceID = auraInstanceID
 
-				-- Pandemic Base duration
-				-- In 12.0.0+, caster (sourceUnit) and spellid can be secret values - check before comparing/indexing
-				local casterIsPlayer = not (issecretvalue and issecretvalue(caster)) and caster == "player"
-				local spellIdIsSecret = issecretvalue and issecretvalue(spellid)
-				if spellid and not spellIdIsSecret and casterIsPlayer then
-					if not AuraBaseDuration[spellid] or AuraBaseDuration[spellid] > duration then
-						AuraBaseDuration[spellid] = duration
+
+				-- Wrap the rest of aura processing in pcall to catch any errors
+				local processSuccess, processErr = pcall(function()
+					-- Use helper APIs that return usable values even with secrets
+					-- These bypass the secret value restrictions
+					if HAS_STACK_DISPLAY_API then
+						-- GetAuraApplicationDisplayCount returns a pre-formatted string (may be secret in 12.0.0+)
+						local stackStr = C_UnitAuras.GetAuraApplicationDisplayCount(unitid, auraInstanceID, 2, 1000)
+						stackStr = SafeValue(stackStr)  -- Returns nil if secret
+						aura.stacks = (stackStr and stackStr ~= "") and tonumber(stackStr) or 1
+					else
+						aura.stacks = SafeValue(auraData.applications) or 1
+					end
+
+					if HAS_DURATION_OBJECT_API then
+						-- GetAuraDuration returns a LuaDurationObject that can be used with cooldowns
+						aura.durationObject = C_UnitAuras.GetAuraDuration(unitid, auraInstanceID)
+						-- For backward compatibility, try to get numeric values safely
+						aura.duration = SafeValue(auraData.duration) or 0
+						aura.expiration = SafeValue(auraData.expirationTime) or 0
+					else
+						aura.duration = SafeValue(auraData.duration) or 0
+						aura.expiration = SafeValue(auraData.expirationTime) or 0
+					end
+
+					-- Use safe spellId for table keys (nil if secret)
+					local safeSpellId = SafeValue(auraData.spellId)
+					aura.spellid = auraData.spellId  -- Keep original for display
+					aura.safeSpellId = safeSpellId   -- Use this for table operations
+
+					-- Pandemic Base duration - use IsCasterPlayer which handles secret sourceUnit
+					-- Pass isFromPlayerOrPlayerPet flag as preferred source (doesn't require UnitIsUnit)
+					local casterIsPlayer = IsCasterPlayer(auraData.sourceUnit, auraData.isFromPlayerOrPlayerPet)
+					aura.isFromPlayer = casterIsPlayer  -- Cache this for later use
+
+					if HAS_BASE_DURATION_API and casterIsPlayer and safeSpellId then
+						-- GetAuraBaseDuration returns the base duration for pandemic calculations
+						local baseDur = C_UnitAuras.GetAuraBaseDuration(unitid, auraInstanceID)
+						if baseDur then
+							AuraBaseDuration[safeSpellId] = baseDur
+						elseif aura.duration > 0 then
+							if not AuraBaseDuration[safeSpellId] or AuraBaseDuration[safeSpellId] > aura.duration then
+								AuraBaseDuration[safeSpellId] = aura.duration
+							end
+						end
+					elseif safeSpellId and casterIsPlayer and aura.duration > 0 then
+						if not AuraBaseDuration[safeSpellId] or AuraBaseDuration[safeSpellId] > aura.duration then
+							AuraBaseDuration[safeSpellId] = aura.duration
+						end
+					end
+					aura.baseduration = (safeSpellId and AuraBaseDuration[safeSpellId]) or aura.duration
+
+					-- Process aura through filter
+					-- In 12.0.0+, process all auras that were returned (Platynator approach)
+					-- The auraInstanceID is always valid if the aura exists
+					local filterSuccess, show, priority, r, g, b, a = pcall(AuraFilterFunction, aura)
+					if not filterSuccess then
+						show = nil
+					end
+
+					local emphSuccess, emphasized, ePriority = pcall(EmphasizedAuraFilterFunction, aura)
+					if not emphSuccess then
+						emphasized = nil
+					end
+
+					show = show or emphasized
+
+					-- Cache aura by name and spellid (only if we have safe values)
+					local safeName = SafeValue(auraData.name)
+					if safeName then
+						local existing = AuraCache[unitid][safeName]
+						local existingCasterNotPlayer = not existing or not existing.isFromPlayer
+						if existingCasterNotPlayer then
+							AuraCache[unitid][safeName] = aura
+							if safeSpellId then
+								AuraCache[unitid][tostring(safeSpellId)] = aura
+							end
+						end
+					end
+
+					-- Store Order/Priority
+					if show then
+						aura.priority = priority or 10
+						aura.r, aura.g, aura.b, aura.a = r, g, b, a
+						storedAuraCount = storedAuraCount + 1
+						storedAuras[storedAuraCount] = aura
+					end
+
+					-- Add to Emphasized list
+					if emphasized then
+						aura.priority = ePriority or 10
+						emphasizedAuras[#emphasizedAuras+1] = aura
+					end
+				end)
+			end
+			DebugAura("  Total: " .. storedAuraCount .. " auras passed filter, " .. #emphasizedAuras .. " emphasized")
+		else
+			-- Legacy path for pre-12.0.0 and Classic: iterate by index
+			local auraIndex = 0
+			local searchedDebuffs, searchedBuffs = false, false
+			local auraFilter = "HARMFUL"
+
+			repeat
+				auraIndex = auraIndex + 1
+
+				local aura = {}
+
+				do
+					local name, icon, stacks, auraType, duration, expiration, caster, canStealOrPurge, nameplateShowPersonal, spellid, canApplyAura, isBossAura, isFromPlayerOrPlayerPet = _UnitAura(unitid, auraIndex, auraFilter)
+
+					aura.name = name
+					aura.texture = icon
+					aura.stacks = stacks or 1
+					aura.type = auraType
+					aura.effect = auraFilter
+					aura.duration = SafeValue(duration) or 0
+					aura.reaction = unitReaction
+					aura.expiration = SafeValue(expiration) or 0
+					aura.caster = caster
+					aura.spellid = spellid
+					aura.unit = unitid
+
+					-- Get safe values for table key operations
+					local safeSpellId = SafeValue(spellid)
+					aura.safeSpellId = safeSpellId
+
+					-- Pandemic Base duration
+					-- Use IsCasterPlayer which handles secret sourceUnit values
+					-- Pass isFromPlayerOrPlayerPet flag as preferred source (doesn't require UnitIsUnit)
+					local casterIsPlayer = IsCasterPlayer(caster, isFromPlayerOrPlayerPet)
+					aura.isFromPlayer = casterIsPlayer
+
+					if safeSpellId and casterIsPlayer and aura.duration > 0 then
+						if not AuraBaseDuration[safeSpellId] or AuraBaseDuration[safeSpellId] > aura.duration then
+							AuraBaseDuration[safeSpellId] = aura.duration
+						end
+					end
+					aura.baseduration = (safeSpellId and AuraBaseDuration[safeSpellId]) or aura.duration
+				end
+
+				-- Auras are evaluated by an external function
+				-- Pre-filtering before the icon grid is populated
+				-- Note: In legacy path, texture is always readable; in 12.0.0+ path we use auraInstanceID
+				local safeName = SafeValue(aura.name)
+				if safeName or aura.auraInstanceID or aura.texture then  -- Show if we have valid identifier
+					local show, priority, r, g, b, a = AuraFilterFunction(aura)
+					local emphasized, ePriority = EmphasizedAuraFilterFunction(aura)
+					show = show or emphasized
+
+					-- Cache aura by name and spellid (only if we have safe values)
+					if safeName then
+						local existing = AuraCache[unitid][safeName]
+						-- Use isFromPlayer flag instead of comparing caster directly
+						local existingCasterNotPlayer = not existing or not existing.isFromPlayer
+						if existingCasterNotPlayer then
+							AuraCache[unitid][safeName] = aura
+							if aura.safeSpellId then
+								AuraCache[unitid][tostring(aura.safeSpellId)] = aura
+							end
+						end
+					end
+
+					-- Store Order/Priority
+					if show then
+						aura.priority = priority or 10
+						aura.r, aura.g, aura.b, aura.a = r, g, b, a
+						storedAuraCount = storedAuraCount + 1
+						storedAuras[storedAuraCount] = aura
+					end
+
+					-- Add to Emphasized list
+					if emphasized then
+						aura.priority = ePriority or 10
+						emphasizedAuras[#emphasizedAuras+1] = aura
+					end
+				else
+					if auraFilter == "HARMFUL" then
+						searchedDebuffs = true
+						auraFilter = "HELPFUL"
+						auraIndex = 0
+					else
+						searchedBuffs = true
 					end
 				end
-				aura.baseduration = (not spellIdIsSecret and AuraBaseDuration[spellid]) or duration
-			end
-
-			-- Gnaw , false, icon, 0 stacks, nil type, duration 1, expiration 8850.436, caster pet, false, false, 91800
-
-			-- Auras are evaluated by an external function
-			-- Pre-filtering before the icon grid is populated
-			if aura.name then
-				local show, priority, r, g, b, a = AuraFilterFunction(aura)
-				local emphasized, ePriority = EmphasizedAuraFilterFunction(aura)
-				-- In 12.0.0+, aura.name and aura.spellid can be secret values - check before using as table keys
-				local nameIsSecret = issecretvalue and issecretvalue(aura.name)
-				local spellIdIsSecret = issecretvalue and issecretvalue(aura.spellid)
-				local existing = not nameIsSecret and AuraCache[unitid][aura.name] or nil
-				show = show or emphasized -- Overwrite 'show' if 'emphasized' is true and 'show' is not true
-				--print(aura.name, show, priority)
-				--show = true
-
-				-- Used by Custom Color Conditions (Always overwrite if the aura isn't the players)
-				-- In 12.0.0+, caster (sourceUnit) can be a secret value - check before comparing
-				local existingCasterNotPlayer = not existing or (not (issecretvalue and issecretvalue(existing.caster)) and existing.caster ~= "player")
-				if existingCasterNotPlayer then
-					if not nameIsSecret then AuraCache[unitid][aura.name] = aura end
-					if not spellIdIsSecret then AuraCache[unitid][tostring(aura.spellid)] = aura end
-				end
-
-				-- Store Order/Priority
-				if show then
-					aura.priority = priority or 10
-					aura.r, aura.g, aura.b, aura.a = r, g, b, a
-
-					storedAuraCount = storedAuraCount + 1
-					storedAuras[storedAuraCount] = aura
-				end
-				-- Add to Emphasized list
-				if emphasized then
-					aura.priority = ePriority or 10
-					--emphasizedAuras[aura.name], emphasizedAuras[tostring(aura.spellid)] = aura, aura
-					emphasizedAuras[#emphasizedAuras+1] = aura
-				end
-			else
-				if auraFilter == "HARMFUL" then
-					searchedDebuffs = true
-					auraFilter = "HELPFUL"
-					auraIndex = 0
-				else
-					searchedBuffs = true
-				end
-			end
-
-		until (searchedDebuffs and searchedBuffs)
+			until (searchedDebuffs and searchedBuffs)
+		end
 
 		NeatPlatesWidgets.AuraCache = AuraCache
 
@@ -430,9 +746,12 @@ local function UpdateIconGrid(frame, unitid)
 		local EmphasizedAura
 		local EmphasizedAuraCount = 0
 
+
 		EmphasizedAura, EmphasizedAuraCount = frame.emphasized:SetAura(emphasizedAuras)	-- Display Emphasized Aura, returns displayed aura
 
-		if not (HideInHeadlineMode and frame.style == "NameOnly") and (storedAuraCount > 0 or next(EmphasizedAura))  then frame:Show() end -- Show the parent frame
+		if not (HideInHeadlineMode and frame.style == "NameOnly") and (storedAuraCount > 0 or next(EmphasizedAura)) then
+			frame:Show()
+		end
 		if storedAuraCount > 0 then
 			sort(storedAuras, AuraSortFunction)
 
@@ -440,10 +759,23 @@ local function UpdateIconGrid(frame, unitid)
 				if (DebuffSlotCount+BuffSlotCount) > AuraLimit then break end
 				local aura = storedAuras[index]
 
-				-- In 12.0.0+, aura.spellid can be a secret value - check before using as table key
-				local spellIdIsSecret = issecretvalue and issecretvalue(aura.spellid)
-				local isEmphasizedUnique = EmphasizedUnique and not spellIdIsSecret and EmphasizedAura[tostring(aura.spellid)]
-				if aura.spellid and aura.expiration and not isEmphasizedUnique then
+				-- Use safeSpellId for table key operations (nil if secret)
+				-- aura.safeSpellId is set during processing, fall back to checking issecretvalue
+				local safeSpellId = aura.safeSpellId
+				if safeSpellId == nil and aura.spellid then
+					-- Fallback for legacy path
+					local spellIdIsSecret = HAS_SECRET_VALUE_SUPPORT and issecretvalue(aura.spellid)
+					safeSpellId = not spellIdIsSecret and aura.spellid or nil
+				end
+
+				local isEmphasizedUnique = EmphasizedUnique and safeSpellId and EmphasizedAura[tostring(safeSpellId)]
+
+				-- Check for valid aura using auraInstanceID (always readable, never secret)
+				-- In 12.0.0+, aura.texture is a secret value that cannot be used in boolean checks,
+				-- but SetTexture() accepts secret values directly for display.
+				local hasValidIdentifier = aura.auraInstanceID or aura.texture
+
+				if hasValidIdentifier and not isEmphasizedUnique then
 					-- Sort buffs and debuffs
 					if aura.effect == "HELPFUL" then
 						table.insert(BuffAuras, aura)
@@ -508,6 +840,7 @@ end
 
 function UpdateWidget(frame)
 		local unitid = frame.unitid
+
 		if(HideInHeadlineMode and frame.style == "NameOnly") then
 			frame:Hide()
 		else
@@ -521,6 +854,8 @@ local function UpdateWidgetContext(frame, unit)
 	local unitid = unit.unitid
 	frame.unitid = unitid
 	frame.style = unit.style
+
+	-- Removed verbose context debug spam
 
 	WidgetList[unitid] = frame
 
@@ -681,8 +1016,17 @@ local function CreateAuraIcon(parent)
 
 	frame.Cooldown:SetAllPoints(frame)
 	frame.Cooldown:SetReverse(true)
-	frame.Cooldown:SetHideCountdownNumbers(true)
+	frame.Cooldown:SetHideCountdownNumbers(true)  -- Will be overridden per-aura in UpdateIcon
 	frame.Cooldown:SetDrawEdge(true)
+	-- Pre-configure for aura display timing if available (WoW 12.0.0+)
+	if frame.Cooldown.SetUseAuraDisplayTime then
+		frame.Cooldown:SetUseAuraDisplayTime(true)
+	end
+	-- Set a smaller font for countdown numbers to fit small aura icons (16-26 pixels)
+	-- The default countdown font is designed for larger frames like action buttons (~36-45px)
+	if frame.Cooldown.SetCountdownFont then
+		frame.Cooldown:SetCountdownFont("GameFontHighlightSmallOutline")
+	end
 
 	frame.Info:SetAllPoints(frame)
 
@@ -843,23 +1187,30 @@ local function CreateAuraWidget(parent, style)
 		local auraLimit = MaxEmphasizedAuras
 		sort(auras, AuraSortFunction)
 
-
 		for index = 1, #auras do
 			if index > auraLimit then break end
-			shown = shown+1
-			-- In 12.0.0+, spellid can be a secret value - check before using as table key
-			local spellid = auras[index].spellid
-			if spellid and not (issecretvalue and issecretvalue(spellid)) then
-				ids[tostring(spellid)] = true
+			shown = shown + 1
+
+			-- Use safeSpellId for table key (already calculated during processing)
+			-- Fall back to checking if spellid is secret
+			local aura = auras[index]
+			local safeSpellId = aura.safeSpellId
+			if safeSpellId == nil and aura.spellid then
+				local isSecret = HAS_SECRET_VALUE_SUPPORT and issecretvalue(aura.spellid)
+				safeSpellId = not isSecret and aura.spellid or nil
 			end
-			UpdateIcon(frame.AuraIconFrames[index], auras[index])
+
+			if safeSpellId then
+				ids[tostring(safeSpellId)] = true
+			end
+
+			UpdateIcon(frame.AuraIconFrames[index], aura)
 		end
 
 		-- Cleanup empty aura slots
-		for i=shown+1, #frame.AuraIconFrames do
+		for i = shown + 1, #frame.AuraIconFrames do
 			UpdateIcon(frame.AuraIconFrames[i])
 		end
-
 
 		return ids, shown
 	end

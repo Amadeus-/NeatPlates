@@ -1367,8 +1367,64 @@ SlashCmdList['NeatPlatesDebug'] = function(arg)
 		if plate ~= nil then
 			plate.showBlizzardPlate = not plate.showBlizzardPlate
 		else
-			print("No target plate to debug")
+			print(orange.."NeatPlates: "..red.."No target plate to debug")
 		end
+	elseif arg == "raidicon" then
+		-- Toggle raid icon debug mode (defined in NeatPlatesCore.lua)
+		NEATPLATES_DEBUG_RAIDICON = not NEATPLATES_DEBUG_RAIDICON
+		if NEATPLATES_DEBUG_RAIDICON then
+			print(orange.."NeatPlates: "..green.."Raid icon debug: ON")
+			print(orange.."NeatPlates: "..white.."Debug output will appear in the debug window.")
+			-- Show the debug window when enabling
+			if NeatPlatesUtility and NeatPlatesUtility.Debug then
+				NeatPlatesUtility.Debug.Show()
+			end
+		else
+			print(orange.."NeatPlates: "..red.."Raid icon debug: OFF")
+		end
+	elseif arg == "auras" then
+		-- Toggle aura debug mode (defined in NeatPlatesWidgets/AuraWidget.lua)
+		NEATPLATES_DEBUG_AURAS = not NEATPLATES_DEBUG_AURAS
+		if NEATPLATES_DEBUG_AURAS then
+			print(orange.."NeatPlates: "..green.."Aura debug: ON")
+			print(orange.."NeatPlates: "..white.."Debug output will appear in the debug window.")
+			print(orange.."NeatPlates: "..yellow.."Target or mouseover enemies to see aura processing.")
+			-- Show the debug window when enabling
+			if NeatPlatesUtility and NeatPlatesUtility.Debug then
+				NeatPlatesUtility.Debug.Show()
+			end
+			-- Force an update to trigger debug output
+			NeatPlates:ForceUpdate()
+		else
+			print(orange.."NeatPlates: "..red.."Aura debug: OFF")
+		end
+	elseif arg == "show" then
+		-- Show the debug window
+		if NeatPlatesUtility and NeatPlatesUtility.Debug then
+			NeatPlatesUtility.Debug.Show()
+			print(orange.."NeatPlates: "..white.."Debug window opened.")
+		end
+	elseif arg == "hide" then
+		-- Hide the debug window
+		if NeatPlatesUtility and NeatPlatesUtility.Debug then
+			NeatPlatesUtility.Debug.Hide()
+			print(orange.."NeatPlates: "..white.."Debug window closed.")
+		end
+	elseif arg == "clear" then
+		-- Clear the debug log
+		if NeatPlatesUtility and NeatPlatesUtility.Debug then
+			NeatPlatesUtility.Debug.Clear()
+			print(orange.."NeatPlates: "..white.."Debug log cleared.")
+		end
+	else
+		print(orange.."NeatPlates Debug Commands:")
+		print(white.."  /npdebug quest"..yellow.." - Debug quest objectives")
+		print(white.."  /npdebug blizzardplate"..yellow.." - Toggle blizzard plate for target")
+		print(white.."  /npdebug raidicon"..yellow.." - Toggle raid icon debug (shows window)")
+		print(white.."  /npdebug auras"..yellow.." - Toggle aura/debuff debug (shows window)")
+		print(white.."  /npdebug show"..yellow.." - Show the debug window")
+		print(white.."  /npdebug hide"..yellow.." - Hide the debug window")
+		print(white.."  /npdebug clear"..yellow.." - Clear the debug log")
 	end
 end;
 

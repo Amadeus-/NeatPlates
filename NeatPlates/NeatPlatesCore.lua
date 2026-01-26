@@ -41,6 +41,18 @@ end
 -- CombatLogGetCurrentEventInfo compatibility (moved to C_CombatLog namespace in 12.0.0)
 local CombatLogGetCurrentEventInfo = C_CombatLog and C_CombatLog.GetCurrentEventInfo or CombatLogGetCurrentEventInfo
 
+-- Debug flag for raid icon troubleshooting (set to true to enable debug output)
+-- This is a global so it can be toggled via /npdebug raidicon
+NEATPLATES_DEBUG_RAIDICON = false
+local function DebugRaidIcon(msg)
+	if NEATPLATES_DEBUG_RAIDICON then
+		-- Use the debug window system instead of print() for better debugging experience
+		if NeatPlatesUtility and NeatPlatesUtility.Debug then
+			NeatPlatesUtility.Debug.Log("RaidIcon", msg)
+		end
+	end
+end
+
 -- Local References
 local _
 local max = math.max
@@ -129,6 +141,7 @@ local function GetSpellName(spellidentifier)
 end
 
 -- Raid Icon Reference
+-- Legacy coordinate-based lookup for pre-12.0.0 compatibility
 local RaidIconCoordinate = {
 		["STAR"] = { x = 0, y =0 },
 		["CIRCLE"] = { x = 0.25, y = 0 },
@@ -139,6 +152,10 @@ local RaidIconCoordinate = {
 		["CROSS"] = { x = .5, y = 0.25},
 		["SKULL"] = { x = .75, y = 0.25},
 }
+
+-- Raid icon sprite sheet constants (matches Blizzard's implementation)
+local RAID_TARGET_TEXTURE_ROWS = 4
+local RAID_TARGET_TEXTURE_COLUMNS = 4
 
 local spellBlacklist, spellCCList, spellCTI
 
@@ -1046,6 +1063,8 @@ end
 --  Unit Updates: Updates Unit Data, Requests indicator updates
 ---------------------------------------------------------------------------------------------------------------------
 do
+	-- RaidIconList maps numeric index to string name (for legacy/pre-12.0 compatibility)
+	-- In 12.0.0+, we store the raw index directly and use SetSpriteSheetCell which accepts secret values
 	local RaidIconList = { "STAR", "CIRCLE", "DIAMOND", "TRIANGLE", "MOON", "SQUARE", "CROSS", "SKULL" }
 
 	-- GetUnitAggroStatus: Determines if a unit is attacking, by looking at aggro glow region
@@ -1216,10 +1235,36 @@ do
 
 		local raidIconIndex = GetRaidTargetIndex(unitid)
 
-		if raidIconIndex then
-			unit.raidIcon = RaidIconList[raidIconIndex]
+		-- In 12.0.0+, GetRaidTargetIndex can return a secret value during combat.
+		-- The key insight from Blizzard's own nameplate code (Blizzard_NamePlateRaidTarget.lua):
+		--   1. Secret values can be checked for nil/not-nil (this works fine)
+		--   2. Secret values can be passed directly to SetSpriteSheetCell (SecretArguments = "AllowedWhenTainted")
+		--   3. Secret values CANNOT be used as table indices or in arithmetic
+		--
+		-- Solution: Store the raw raidIconIndex directly (may be secret) and use
+		-- SetSpriteSheetCell in the indicator which accepts secret values natively.
+		-- Check ~= nil to determine if marked (this comparison works with secrets).
+
+		-- Store the raw index directly - it may be a secret value, but that's OK
+		-- because SetSpriteSheetCell can handle secret values
+		unit.raidIconIndex = raidIconIndex
+
+		-- For legacy compatibility with themes that check unit.raidIcon (string name),
+		-- only set the string version when we have a non-secret value
+		if raidIconIndex ~= nil then
+			-- Unit is marked (raidIconIndex is either a number or a secret, but not nil)
 			unit.isMarked = true
+			if not isMidnight or not issecretvalue or not issecretvalue(raidIconIndex) then
+				-- Normal number: also set the legacy string name for backward compat
+				unit.raidIcon = RaidIconList[raidIconIndex]
+				DebugRaidIcon("Unit " .. tostring(unitid) .. " marked with " .. tostring(unit.raidIcon) .. " (index " .. tostring(raidIconIndex) .. ")")
+			else
+				-- Secret value: keep the index but don't try to look up string name
+				DebugRaidIcon("Unit " .. tostring(unitid) .. " has SECRET raidIconIndex (will use SetSpriteSheetCell)")
+			end
 		else
+			-- raidIconIndex is nil: unit is definitively not marked
+			unit.raidIcon = nil
 			unit.isMarked = false
 		end
 
@@ -1445,13 +1490,39 @@ do
 
 	-- UpdateIndicator_RaidIcon
 	function UpdateIndicator_RaidIcon()
-		if unit.isMarked and style.raidicon.show and style.raidicon.enabled then
+		-- Check if raidicon should be shown
+		-- Default to true for show/enabled if not explicitly set to false (backward compat with older themes)
+		local raidIconStyle = style.raidicon
+		local shouldShow = raidIconStyle and (raidIconStyle.show ~= false) and (raidIconStyle.enabled ~= false)
+
+		DebugRaidIcon("UpdateIndicator_RaidIcon: isMarked=" .. tostring(unit.isMarked) ..
+			", raidIconIndex=" .. tostring(unit.raidIconIndex) ..
+			", raidIcon=" .. tostring(unit.raidIcon) ..
+			", styleExists=" .. tostring(raidIconStyle ~= nil) ..
+			", shouldShow=" .. tostring(shouldShow))
+
+		-- In 12.0.0+, use raidIconIndex directly with SetSpriteSheetCell (accepts secret values)
+		-- Fall back to legacy coordinate-based method for pre-12.0.0 or if raidIconIndex is unavailable
+		if unit.raidIconIndex ~= nil and shouldShow then
+			-- Use SetSpriteSheetCell which accepts secret values natively
+			-- This is how Blizzard's own nameplate code (Blizzard_NamePlateRaidTarget.lua) does it
+			DebugRaidIcon("Showing raid icon using SetSpriteSheetCell with index=" .. tostring(unit.raidIconIndex))
+			visual.raidicon:Show()
+			visual.raidicon:SetSpriteSheetCell(unit.raidIconIndex, RAID_TARGET_TEXTURE_ROWS, RAID_TARGET_TEXTURE_COLUMNS)
+		elseif unit.isMarked and unit.raidIcon and shouldShow then
+			-- Legacy fallback for pre-12.0.0 or themes that set unit.raidIcon directly
 			local iconCoord = RaidIconCoordinate[unit.raidIcon]
 			if iconCoord then
+				DebugRaidIcon("Showing raid icon (legacy): " .. tostring(unit.raidIcon) .. " at coords (" .. iconCoord.x .. "," .. iconCoord.y .. ")")
 				visual.raidicon:Show()
 				visual.raidicon:SetTexCoord(iconCoord.x, iconCoord.x + 0.25, iconCoord.y, iconCoord.y + 0.25)
-			else visual.raidicon:Hide() end
-		else visual.raidicon:Hide() end
+			else
+				DebugRaidIcon("ERROR: No iconCoord for raidIcon=" .. tostring(unit.raidIcon))
+				visual.raidicon:Hide()
+			end
+		else
+			visual.raidicon:Hide()
+		end
 	end
 
 
@@ -2169,7 +2240,8 @@ do
 
 			local objectname = anchorgroup[index]
 			local object, objectstyle = visual[objectname], style[objectname]
-			if objectstyle and objectstyle.show and objectstyle.enabled then
+			-- Default to true for show/enabled if not explicitly set to false (backward compat with older themes)
+			if objectstyle and (objectstyle.show ~= false) and (objectstyle.enabled ~= false) then
 				local offset
 				if useYOffset and (objectname == "name" or objectname == "subtext") then offset = style.subtext.yOffset end -- Subtext offset
 

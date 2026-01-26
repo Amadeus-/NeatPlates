@@ -2072,6 +2072,312 @@ end
 -- /run for i,v in pairs(INTERFACEOPTIONS_ADDONCATEGORIES) do print(i, v, v.name) end
 
 
+-------------------------------------------------------------------------------------
+-- Debug Window System
+-- Provides a scrollable, copyable debug output window instead of chat spam
+-- Based on Blizzard's ScriptErrorsFrame pattern for proper scroll/editbox setup
+-------------------------------------------------------------------------------------
+do
+	local DebugLog = {}
+	local MAX_DEBUG_ENTRIES = 1000
+	local debugFrame = nil
+
+	-- Add a debug message to the log
+	local function AddDebugMessage(category, msg)
+		local timestamp = date("%H:%M:%S")
+		local entry = timestamp .. " [" .. category .. "] " .. tostring(msg)
+		table.insert(DebugLog, entry)
+
+		-- Keep max entries
+		while #DebugLog > MAX_DEBUG_ENTRIES do
+			table.remove(DebugLog, 1)
+		end
+
+		-- Update the debug window if it's visible
+		if debugFrame and debugFrame:IsShown() then
+			debugFrame:UpdateText()
+		end
+	end
+
+	-- Create the debug window using UIPanelDialogTemplate (simpler and more reliable)
+	local function CreateDebugWindow()
+		-- Create the main frame using UIPanelDialogTemplate
+		local frame = CreateFrame("Frame", "NeatPlatesDebugFrame", UIParent, "UIPanelDialogTemplate")
+		frame:SetSize(700, 450)
+		frame:SetPoint("CENTER")
+		frame:SetMovable(true)
+		frame:SetClampedToScreen(true)
+		frame:SetFrameStrata("HIGH")
+		frame:EnableMouse(true)
+
+		-- Create a drag area for the title bar (like Blizzard's TitleDragAreaTemplate)
+		local dragArea = CreateFrame("Frame", nil, frame)
+		dragArea:SetPoint("TOPLEFT", 0, 0)
+		dragArea:SetPoint("TOPRIGHT", 0, 0)
+		dragArea:SetHeight(24)
+		dragArea:EnableMouse(true)
+		dragArea:RegisterForDrag("LeftButton")
+		dragArea:SetScript("OnDragStart", function(self)
+			frame:StartMoving()
+		end)
+		dragArea:SetScript("OnDragStop", function(self)
+			frame:StopMovingOrSizing()
+		end)
+
+		-- Set the title
+		frame.Title:SetText("NeatPlates Debug Log")
+
+		-- Entry count display
+		local countText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		countText:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -35, -8)
+		countText:SetTextColor(0.7, 0.7, 0.7)
+		frame.countText = countText
+
+		-- Create a background for the content area
+		local contentBg = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
+		contentBg:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, -28)
+		contentBg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -12, 40)
+		contentBg:SetColorTexture(0.05, 0.05, 0.05, 0.8)
+
+		-- Calculate dimensions for scroll frame
+		local SCROLL_WIDTH = 700 - 24 - 25  -- frame width - left/right margins - scrollbar
+		local SCROLL_HEIGHT = 450 - 28 - 40 - 8  -- frame height - top - bottom buttons - padding
+
+		-- Create ScrollFrame (parent to the frame, not UIParent)
+		local scrollFrame = CreateFrame("ScrollFrame", "NeatPlatesDebugScrollFrame", frame, "UIPanelScrollFrameTemplate")
+		scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -30)
+		scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -36, 42)
+		frame.scrollFrame = scrollFrame
+
+		-- Create the EditBox as a child of the scroll frame's scroll child area
+		local editBox = CreateFrame("EditBox", "NeatPlatesDebugEditBox", scrollFrame)
+		editBox:SetMultiLine(true)
+		editBox:SetAutoFocus(false)
+		editBox:SetFontObject(GameFontHighlightSmall)
+		editBox:SetTextInsets(4, 4, 4, 4)
+		editBox:SetMaxLetters(0)  -- No limit
+		editBox:EnableMouse(true)
+
+		-- Set the size of the editbox to match scroll frame width
+		-- Height will be determined by content
+		editBox:SetWidth(SCROLL_WIDTH)
+		editBox:SetHeight(SCROLL_HEIGHT)  -- Minimum height, will expand with content
+
+		-- Initialize scrolling edit support (like Blizzard's ScrollingEdit_OnLoad)
+		editBox.cursorOffset = 0
+		editBox.cursorHeight = 0
+
+		-- OnLoad equivalent
+		editBox:SetScript("OnLoad", function(self)
+			self.cursorOffset = 0
+			self.cursorHeight = 0
+		end)
+
+		-- OnCursorChanged - track cursor position for scrolling
+		editBox:SetScript("OnCursorChanged", function(self, x, y, w, h)
+			self.cursorOffset = y
+			self.cursorHeight = h
+			self.handleCursorChange = true
+		end)
+
+		-- OnUpdate - handle scrolling to follow cursor
+		editBox:SetScript("OnUpdate", function(self, elapsed)
+			if self.handleCursorChange then
+				local height = scrollFrame:GetHeight()
+				local range = scrollFrame:GetVerticalScrollRange()
+				local scroll = scrollFrame:GetVerticalScroll()
+				local cursorOffset = -self.cursorOffset
+
+				if height > 0 and range > 0 then
+					-- Scroll up if cursor is above visible area
+					while cursorOffset < scroll do
+						scroll = scroll - (height / 2)
+						if scroll < 0 then
+							scroll = 0
+						end
+						scrollFrame:SetVerticalScroll(scroll)
+					end
+
+					-- Scroll down if cursor is below visible area
+					while (cursorOffset + self.cursorHeight) > (scroll + height) and scroll < range do
+						scroll = scroll + (height / 2)
+						if scroll > range then
+							scroll = range
+						end
+						scrollFrame:SetVerticalScroll(scroll)
+					end
+				end
+
+				self.handleCursorChange = false
+			end
+		end)
+
+		-- Handle text changes
+		editBox:SetScript("OnTextChanged", function(self, userInput)
+			-- Force cursor handling update
+			self.handleCursorChange = true
+		end)
+
+		-- Escape to clear focus
+		editBox:SetScript("OnEscapePressed", function(self)
+			self:ClearFocus()
+		end)
+
+		-- Highlight text on focus
+		editBox:SetScript("OnEditFocusGained", function(self)
+			self:HighlightText(0)
+		end)
+
+		-- Set the editbox as the scroll child
+		scrollFrame:SetScrollChild(editBox)
+		frame.editBox = editBox
+
+		-- Adjust editbox width after scroll frame is set up
+		-- This needs to happen after the frame is shown, so we'll do it on show
+		frame:SetScript("OnShow", function(self)
+			-- Set editbox width to match scrollframe width
+			local width = scrollFrame:GetWidth()
+			if width > 0 then
+				editBox:SetWidth(width - 8)
+			end
+		end)
+
+		-- Create buttons at the bottom - all parented to frame (NOT to some sub-frame)
+		local BUTTON_HEIGHT = 22
+		local BUTTON_SPACING = 8
+		local BUTTON_Y = 10
+
+		-- Clear button
+		local clearButton = CreateFrame("Button", "NeatPlatesDebugClearButton", frame, "UIPanelButtonTemplate")
+		clearButton:SetSize(80, BUTTON_HEIGHT)
+		clearButton:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 14, BUTTON_Y)
+		clearButton:SetText("Clear")
+		clearButton:SetScript("OnClick", function()
+			wipe(DebugLog)
+			editBox:SetText("")
+			countText:SetText("0 entries")
+		end)
+		frame.clearButton = clearButton
+
+		-- Select All button
+		local selectButton = CreateFrame("Button", "NeatPlatesDebugSelectButton", frame, "UIPanelButtonTemplate")
+		selectButton:SetSize(80, BUTTON_HEIGHT)
+		selectButton:SetPoint("LEFT", clearButton, "RIGHT", BUTTON_SPACING, 0)
+		selectButton:SetText("Select All")
+		selectButton:SetScript("OnClick", function()
+			editBox:SetFocus()
+			editBox:HighlightText()
+		end)
+		frame.selectButton = selectButton
+
+		-- Scroll to Bottom button
+		local scrollBottomButton = CreateFrame("Button", "NeatPlatesDebugScrollBottomButton", frame, "UIPanelButtonTemplate")
+		scrollBottomButton:SetSize(100, BUTTON_HEIGHT)
+		scrollBottomButton:SetPoint("LEFT", selectButton, "RIGHT", BUTTON_SPACING, 0)
+		scrollBottomButton:SetText("Scroll Bottom")
+		scrollBottomButton:SetScript("OnClick", function()
+			local range = scrollFrame:GetVerticalScrollRange()
+			scrollFrame:SetVerticalScroll(range)
+			editBox:SetCursorPosition(editBox:GetNumLetters())
+		end)
+		frame.scrollBottomButton = scrollBottomButton
+
+		-- Close button
+		local closeButton = CreateFrame("Button", "NeatPlatesDebugCloseButton", frame, "UIPanelButtonTemplate")
+		closeButton:SetSize(80, BUTTON_HEIGHT)
+		closeButton:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -14, BUTTON_Y)
+		closeButton:SetText("Close")
+		closeButton:SetScript("OnClick", function()
+			frame:Hide()
+		end)
+		frame.closeButton = closeButton
+
+		-- Instructions text
+		local instructions = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		instructions:SetPoint("RIGHT", closeButton, "LEFT", -10, 0)
+		instructions:SetText("Ctrl+A to select all, Ctrl+C to copy")
+		instructions:SetTextColor(0.5, 0.5, 0.5)
+		frame.instructions = instructions
+
+		-- Method to update the text content
+		function frame:UpdateText()
+			local text = table.concat(DebugLog, "\n")
+			self.editBox:SetText(text)
+			self.countText:SetText(#DebugLog .. " entries")
+		end
+
+		-- Method to scroll to bottom
+		function frame:ScrollToBottom()
+			C_Timer.After(0.05, function()
+				if self:IsShown() then
+					local range = self.scrollFrame:GetVerticalScrollRange()
+					self.scrollFrame:SetVerticalScroll(range)
+				end
+			end)
+		end
+
+		frame:Hide()
+		return frame
+	end
+
+	-- Show the debug window
+	local function ShowDebugWindow()
+		if not debugFrame then
+			debugFrame = CreateDebugWindow()
+		end
+
+		debugFrame:UpdateText()
+		debugFrame:Show()
+		debugFrame:ScrollToBottom()
+	end
+
+	-- Hide the debug window
+	local function HideDebugWindow()
+		if debugFrame then
+			debugFrame:Hide()
+		end
+	end
+
+	-- Toggle the debug window
+	local function ToggleDebugWindow()
+		if debugFrame and debugFrame:IsShown() then
+			HideDebugWindow()
+		else
+			ShowDebugWindow()
+		end
+	end
+
+	-- Clear the debug log
+	local function ClearDebugLog()
+		wipe(DebugLog)
+		if debugFrame and debugFrame:IsShown() then
+			debugFrame:UpdateText()
+		end
+	end
+
+	-- Get the debug log contents (for external use)
+	local function GetDebugLog()
+		return table.concat(DebugLog, "\n")
+	end
+
+	-- Get entry count
+	local function GetDebugLogCount()
+		return #DebugLog
+	end
+
+	-- Export functions
+	NeatPlatesUtility.Debug = {
+		Log = AddDebugMessage,
+		Show = ShowDebugWindow,
+		Hide = HideDebugWindow,
+		Toggle = ToggleDebugWindow,
+		Clear = ClearDebugLog,
+		GetLog = GetDebugLog,
+		GetCount = GetDebugLogCount,
+	}
+end
+
+
 
 
 
