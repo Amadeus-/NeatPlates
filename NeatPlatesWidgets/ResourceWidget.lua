@@ -493,7 +493,7 @@ end
 -- Widget Context
 local function ClearWidgetContext(frame)
 	local guid = frame.guid
-	if guid then
+	if guid and not issecretvalue(guid) then
 		WidgetList[guid] = nil
 		frame.guid = nil
 	end
@@ -509,14 +509,16 @@ local function UpdateWidgetContext(frame, unit)
     end)
 
 	-- Add to Widget List
-	if guid then
-		if frame.guid then WidgetList[frame.guid] = nil end
+	if guid and not issecretvalue(guid) then
+		if frame.guid and not issecretvalue(frame.guid) then WidgetList[frame.guid] = nil end
 		frame.guid = guid
 		WidgetList[guid] = frame
 	end
 
     -- Update Widget
-    if UnitGUID("target") == guid then
+    local targetGUID = UnitGUID("target")
+    local isTarget = targetGUID and guid and not issecretvalue(targetGUID) and not issecretvalue(guid) and targetGUID == guid
+    if isTarget then
         frame:Show()
         frame:Update()
     else
@@ -539,7 +541,7 @@ WatcherFrame:RegisterEvent("UNIT_FLAGS")
 
 local function WatcherFrameHandler(frame, event, unitid)
     local guid = UnitGUID("target")
-    if UnitExists("target") then
+    if UnitExists("target") and guid and not issecretvalue(guid) then
         local widget = WidgetList[guid]
         -- print("WatcherFrameHandler", event, guid, widget)
         if widget then UpdateWidgetFrame(widget) end				-- To update all, use: for guid, widget in pairs(WidgetList) do UpdateWidgetFrame(widget) end

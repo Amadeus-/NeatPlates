@@ -324,7 +324,18 @@ end
 -- TargetOf
 local function HealthFunctionTargetOf(unit)
 	if unit.isInCombat then
-		return UnitName(unit.unitid.."target")
+		local targetname
+		-- Use UnitSpellTargetName (12.0.0+) with secret value handling and fallback
+		if UnitSpellTargetName then
+			targetname = UnitSpellTargetName(unit.unitid)
+			if issecretvalue and issecretvalue(targetname) then targetname = nil end
+		end
+		-- Fallback to unit..target approach if API unavailable or returned secret/nil
+		if not targetname then
+			targetname = UnitName(unit.unitid.."target")
+			if issecretvalue and issecretvalue(targetname) then targetname = nil end
+		end
+		return targetname
 	end
 	--[[
 	if (unit.isTarget or (LocalVars.FocusAsTarget and unit.isFocus)) then return UnitName("targettarget")
@@ -336,10 +347,29 @@ end
 local function HealthFunctionTargetOfClass(unit)
 	if unit.isInCombat then
 		local targetof = unit.unitid.."target"
-		local name = UnitName(targetof) or ""
+		local name, targetclass
 
-		if UnitIsPlayer(targetof) then
-			local targetclass = select(2, UnitClass(targetof))
+		-- Use UnitSpellTargetName/Class (12.0.0+) with secret value handling and fallback
+		if UnitSpellTargetName then
+			name = UnitSpellTargetName(unit.unitid)
+			targetclass = UnitSpellTargetClass(unit.unitid)
+			if issecretvalue and issecretvalue(name) then name = nil end
+			if issecretvalue and issecretvalue(targetclass) then targetclass = nil end
+		end
+
+		-- Fallback to unit..target approach if API unavailable or returned secret/nil
+		if not name then
+			name = UnitName(targetof)
+			if issecretvalue and issecretvalue(name) then name = nil end
+		end
+		if not targetclass and UnitIsPlayer(targetof) then
+			targetclass = select(2, UnitClass(targetof))
+			if issecretvalue and issecretvalue(targetclass) then targetclass = nil end
+		end
+
+		name = name or ""
+
+		if targetclass and NEATPLATES_CLASS_COLORS[targetclass] then
 			return ConvertRGBtoColorString(NEATPLATES_CLASS_COLORS[targetclass])..name
 		else
 			return name

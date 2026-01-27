@@ -56,7 +56,10 @@ end
 
 -- By Threat (Low) Tank Mode
 local function ScaleFunctionByThreatLow(unit)
-	if InCombatLockdown() and unit.reaction ~= "FRIENDLY" and (unit.isInCombat or UnitIsUnit(unit.unitid.."target", "player")) then
+	-- Handle UnitIsUnit returning secret value in 12.0.0+
+	local isTargetingPlayer = UnitIsUnit(unit.unitid.."target", "player")
+	if issecretvalue and issecretvalue(isTargetingPlayer) then isTargetingPlayer = false end
+	if InCombatLockdown() and unit.reaction ~= "FRIENDLY" and (unit.isInCombat or isTargetingPlayer) then
 		if IsOffTanked(unit) then return end
 		-- Use SafeHasHealth for 12.0.0+ secret value handling
 		if unit.type == "NPC" and SafeHasHealth(unit) and unit.threatValue < 2 then return LocalVars.ScaleSpotlight end

@@ -201,7 +201,7 @@ end
 
 -- Split guid
 local function ParseGUID(guid)
-	if guid then return strsplit("-", guid) end
+	if guid and not issecretvalue(guid) then return strsplit("-", guid) end
 	return
 end
 

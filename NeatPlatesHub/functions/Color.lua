@@ -149,11 +149,17 @@ Threat Value
 local function ColorFunctionByThreat(unit)
 	local classColor = NEATPLATES_CLASS_COLORS[unit.class]
 
+	-- Handle secret values from UnitIsUnit in combat (12.0.0+)
+	local isTargetingPlayer = UnitIsUnit(unit.unitid.."target", "player")
+	if issecretvalue and issecretvalue(isTargetingPlayer) then
+		isTargetingPlayer = false
+	end
+
 	if classColor then
 		return classColor
-	elseif not UnitInParty("player") and not UnitExists("pet") and LocalVars.SafeColorSolo and InCombatLockdown() and unit.reaction ~= "FRIENDLY" and unit.type == "NPC" and (unit.isInCombat or UnitIsUnit(unit.unitid.."target", "player")) then
+	elseif not UnitInParty("player") and not UnitExists("pet") and LocalVars.SafeColorSolo and InCombatLockdown() and unit.reaction ~= "FRIENDLY" and unit.type == "NPC" and (unit.isInCombat or isTargetingPlayer) then
 		return LocalVars.ColorThreatSafe
-	elseif (LocalVars.ThreatSoloEnable or UnitInParty("player") or UnitExists("pet")) and InCombatLockdown() and unit.reaction ~= "FRIENDLY" and unit.type == "NPC" and (unit.isInCombat or UnitIsUnit(unit.unitid.."target", "player")) then
+	elseif (LocalVars.ThreatSoloEnable or UnitInParty("player") or UnitExists("pet")) and InCombatLockdown() and unit.reaction ~= "FRIENDLY" and unit.type == "NPC" and (unit.isInCombat or isTargetingPlayer) then
 		local isTank = (LocalVars.ThreatWarningMode == "Tank") or (LocalVars.ThreatWarningMode == "Auto" and IsTankingAuraActive())
 		local threatException = ThreatExceptions(unit, isTank)
 
@@ -416,7 +422,12 @@ end
 
 -- Warning Glow (Auto Detect)
 local function WarningBorderFunctionByThreat(unit)
-	if (LocalVars.ThreatSoloEnable or UnitInParty("player") or UnitExists("pet")) and InCombatLockdown() and unit.reaction ~= "FRIENDLY" and unit.type == "NPC" and (unit.isInCombat or UnitIsUnit(unit.unitid.."target", "player")) then
+	-- Check if unit is targeting player, handling secret values in 12.0.0+
+	local isTargetingPlayer = UnitIsUnit(unit.unitid.."target", "player")
+	if issecretvalue and issecretvalue(isTargetingPlayer) then
+		isTargetingPlayer = false
+	end
+	if (LocalVars.ThreatSoloEnable or UnitInParty("player") or UnitExists("pet")) and InCombatLockdown() and unit.reaction ~= "FRIENDLY" and unit.type == "NPC" and (unit.isInCombat or isTargetingPlayer) then
 		local isTank = (LocalVars.ThreatWarningMode == "Tank") or (LocalVars.ThreatWarningMode == "Auto" and IsTankingAuraActive())
 		local threatException = ThreatExceptions(unit, isTank, true)
 

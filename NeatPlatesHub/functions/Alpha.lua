@@ -162,7 +162,8 @@ local function AlphaDelegate(...)
 		return Diminish(LocalVars.OpacityFiltered)
 	end
 
-	if LocalVars.UnitSpotlightOpacityEnable and LocalVars.UnitSpotlightLookup[unit.name] then
+	-- Check for secret value before using unit.name as table index (12.0.0+)
+	if LocalVars.UnitSpotlightOpacityEnable and unit.name and not issecretvalue(unit.name) and LocalVars.UnitSpotlightLookup[unit.name] then
 		return LocalVars.UnitSpotlightOpacity
 	end
 

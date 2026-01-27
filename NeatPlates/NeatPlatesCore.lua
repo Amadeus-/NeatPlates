@@ -952,7 +952,7 @@ do
 
 		PlatesVisible[plate] = unitid
 		PlatesByUnit[unitid] = plate
-		if unitGUID and unitid ~= "target" then PlatesByGUID[unitGUID] = plate end
+		if unitGUID and unitid ~= "target" and not issecretvalue(unitGUID) then PlatesByGUID[unitGUID] = plate end
 
 		unit.frame = extended
 		unit.alpha = 0
@@ -1012,7 +1012,7 @@ do
 
 		PlatesVisible[plate] = nil
 		PlatesByUnit[unitid] = nil
-		if unitGUID and unitid ~= "target" then PlatesByGUID[unitGUID] = nil end
+		if unitGUID and unitid ~= "target" and not issecretvalue(unitGUID) then PlatesByGUID[unitGUID] = nil end
 
 		visual.extrabar:Hide()
 		visual.castbar:Hide()
@@ -1589,7 +1589,8 @@ do
 	-- UpdateIndicator_Standard: Updates Non-Delegate Indicators
 	function UpdateIndicator_Standard()
 		if IsPlateShown(nameplate) then
-			if unitcache.name ~= unit.name or unitcache.showName ~= unit.showName then UpdateIndicator_Name() end
+			local nameChanged = not issecretvalue(unit.name) and not issecretvalue(unitcache.name) and unitcache.name ~= unit.name
+			if nameChanged or unitcache.showName ~= unit.showName then UpdateIndicator_Name() end
 			if unitcache.level ~= unit.level or unitcache.isBoss ~= unit.isBoss then UpdateIndicator_Level() end
 			UpdateIndicator_RaidIcon()
 			if unitcache.isElite ~= unit.isElite or unitcache.isRare ~= unit.isRare then UpdateIndicator_EliteIcon() end
@@ -1712,11 +1713,15 @@ do
 
 			if not spell or not unitType then return end -- Return if neccessary info is missing
 
-			text = spell.name
-			texture = NeatPlatesSpellDB.default[spell.name].texture or 136243
+			-- Handle secret value for spell.name in 12.0.0+ before using as table index
+			local spellName = spell.name
+			if issecretvalue and issecretvalue(spellName) then return end
 
-			if creatureID then spellEntry = NeatPlatesSpellDB[unitType][spell.name][creatureID]
-			else spellEntry = NeatPlatesSpellDB[unitType][spell.name] end
+			text = spellName
+			texture = NeatPlatesSpellDB.default[spellName].texture or 136243
+
+			if creatureID then spellEntry = NeatPlatesSpellDB[unitType][spellName][creatureID]
+			else spellEntry = NeatPlatesSpellDB[unitType][spellName] end
 
 			if spellEntry.castTime then
 				startTime = spell.startTime
@@ -1770,7 +1775,12 @@ do
 		local r, g, b, a = 1, 1, 0, 1
 
 		if activetheme.SetCastbarColor then
-			r, g, b, a = activetheme.SetCastbarColor(unit, SpellSchoolByGUID[unit.guid])
+			-- Handle unit.guid being a secret value in 12.0.0+ before using as table index
+			local spellSchool = nil
+			if not (issecretvalue and issecretvalue(unit.guid)) then
+				spellSchool = SpellSchoolByGUID[unit.guid]
+			end
+			r, g, b, a = activetheme.SetCastbarColor(unit, spellSchool)
 			if not (r and g and b and a) then return end
 		end
 
@@ -1900,11 +1910,32 @@ do
 	function OnUpdateCastTarget(plate, unitid)
 		if ShowSpellTarget and plate and unitid then
 			local targetof = unitid.."target"
-			local targetname =  UnitName(targetof) or ""
+			local targetname, targetclass
+
+			-- Use UnitSpellTargetName/Class (12.0.0+) with secret value handling and fallback
+			if UnitSpellTargetName then
+				targetname = UnitSpellTargetName(unitid)
+				targetclass = UnitSpellTargetClass(unitid)
+				-- Handle secret values (can occur during combat in 12.0.0+)
+				if issecretvalue and issecretvalue(targetname) then targetname = nil end
+				if issecretvalue and issecretvalue(targetclass) then targetclass = nil end
+			end
+
+			-- Fallback to unit..target approach if API unavailable or returned secret/nil
+			if not targetname then
+				targetname = UnitName(targetof)
+				if issecretvalue and issecretvalue(targetname) then targetname = nil end
+			end
+			if not targetclass then
+				targetclass = select(2, UnitClass(targetof))
+				if issecretvalue and issecretvalue(targetclass) then targetclass = nil end
+			end
+
+			targetname = targetname or ""
+
 			if UnitIsUnit(targetof, "player") then
 				targetname = "|cFFFF1100"..">> "..L["You"].." <<" or ""	-- Red '>> You <<' instead of character name
-			elseif UnitIsPlayer(targetof) then
-				local targetclass = select(2, UnitClass(targetof))
+			elseif targetclass and NEATPLATES_CLASS_COLORS[targetclass] then
 				targetname = ConvertRGBtoColorString(NEATPLATES_CLASS_COLORS[targetclass])..targetname or ""
 			end
 			plate.extended.visual.spelltarget:SetText(targetname)
@@ -2015,7 +2046,8 @@ do
 		end
 		-- Show Target frame, if other frame doesn't exist and isn't dead
 		if NEATPLATES_IS_CLASSIC and HasTarget and NeatPlatesTarget then NeatPlatesTarget.unitGUID = guid end
-		toggleNeatPlatesTarget(HasTarget and unitAlive and not PlatesByGUID[guid])
+		local plateExists = guid and not issecretvalue(guid) and PlatesByGUID[guid]
+		toggleNeatPlatesTarget(HasTarget and unitAlive and not plateExists)
 		SetUpdateAll()
 	end
 

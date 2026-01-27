@@ -12,7 +12,10 @@ local SafeIsDamaged = NeatPlatesHubHelpers.SafeIsDamaged
 -- Unit Filter
 ------------------------------------------------------------------------------
 local function UnitFilter(unit)
-	if LocalVars.OpacityFilterLookup[unit.name] then return true
+	-- Handle secret value for unit.name in 12.0.0+ before using as table index
+	local unitName = unit.name
+	if issecretvalue and issecretvalue(unitName) then unitName = nil end
+	if unitName and LocalVars.OpacityFilterLookup[unitName] then return true
 	elseif LocalVars.OpacityFilterLowLevelUnits and unit.isTrivial then return true
 	elseif LocalVars.OpacityFilterNeutralUnits and unit.reaction == "NEUTRAL" then return true
 	elseif LocalVars.OpacityFilterUntitledFriendlyNPC and unit.type == "NPC" and unit.reaction == "FRIENDLY" and not (GetUnitSubtitle(unit) or next(GetUnitQuestInfo(unit)) ~= nil)  then return true

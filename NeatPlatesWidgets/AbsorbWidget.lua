@@ -201,8 +201,8 @@ local function UpdateWidgetContext(frame, unit)
 	frame.unitid = unitid
 	frame.lastStyle = unit.style
 
-	if guid then
-		if frame.guid then WidgetList[frame.guid] = nil end
+	if guid and not issecretvalue(guid) then
+		if frame.guid and not issecretvalue(frame.guid) then WidgetList[frame.guid] = nil end
 		frame.guid = guid
 		WidgetList[guid] = frame
 	end
@@ -210,7 +210,9 @@ local function UpdateWidgetContext(frame, unit)
 	--[[ Update Widget Frame ]]--
 	frame:UnregisterAllEvents()
 
-	if unit.style == "Default" and (WidgetUnits == 2 or (WidgetUnits == 1 and UnitGUID("target") == guid)) then
+	local targetGUID = UnitGUID("target")
+	local targetMatches = targetGUID and not issecretvalue(targetGUID) and not issecretvalue(guid) and targetGUID == guid
+	if unit.style == "Default" and (WidgetUnits == 2 or (WidgetUnits == 1 and targetMatches)) then
 		frame:RegisterUnitEvent("UNIT_ABSORB_AMOUNT_CHANGED", unitid)
 		frame:RegisterUnitEvent("UNIT_HEAL_ABSORB_AMOUNT_CHANGED", unitid)
 		frame:RegisterUnitEvent("UNIT_HEALTH", unitid)
@@ -224,7 +226,7 @@ end
 
 local function ClearWidgetContext(frame)
 	local guid = frame.guid
-	if guid then
+	if guid and not issecretvalue(guid) then
 		WidgetList[guid] = nil
 		frame.guid = nil
 	end
@@ -238,7 +240,7 @@ WatcherFrame:RegisterEvent("UNIT_HEALTH")
 
 local function WatcherFrameHandler(frame, event, unitid)
 	local guid = UnitGUID("target")
-	if UnitExists("target") then
+	if UnitExists("target") and guid and not issecretvalue(guid) then
 		local widget = WidgetList[guid]
 		if widget then
 			UpdateAbsorbs(widget, widget.unitid)
