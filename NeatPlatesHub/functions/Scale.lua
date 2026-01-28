@@ -46,7 +46,10 @@ end
 
 -- By Threat (High) DPS Mode
 local function ScaleFunctionByThreatHigh(unit)
-	if InCombatLockdown() and unit.reaction ~= "FRIENDLY" and (unit.isInCombat or UnitIsUnit(unit.unitid.."target", "player")) then
+	-- Handle UnitIsUnit returning secret value in 12.0.0+
+	local isTargetingPlayer = UnitIsUnit(unit.unitid.."target", "player")
+	if issecretvalue and issecretvalue(isTargetingPlayer) then isTargetingPlayer = false end
+	if InCombatLockdown() and unit.reaction ~= "FRIENDLY" and (unit.isInCombat or isTargetingPlayer) then
 		-- Use SafeHasHealth for 12.0.0+ secret value handling (health > 2 means has health)
 		if unit.type == "NPC" and unit.threatValue > 1 and SafeHasHealth(unit) then return LocalVars.ScaleSpotlight end
 	elseif LocalVars.ColorShowPartyAggro and unit.reaction == "FRIENDLY" then
@@ -170,12 +173,16 @@ local function ScaleDelegate(...)
 		filterScale = LocalVars.ScaleFiltered
 	end
 
+	-- Handle UnitIsUnit returning secret value in 12.0.0+
+	local isTargetingPlayerDelegate = UnitIsUnit(unit.unitid.."target", "player")
+	if issecretvalue and issecretvalue(isTargetingPlayerDelegate) then isTargetingPlayerDelegate = false end
+
 	if (LocalVars.ScaleTargetSpotlight and (unit.isTarget or (LocalVars.FocusAsTarget and unit.isFocus))) then scale = LocalVars.ScaleSpotlight
 	elseif (LocalVars.ScaleMouseoverSpotlight and unit.isMouseover) then scale = LocalVars.ScaleSpotlight
 	elseif LocalVars.ScaleIgnoreNonEliteUnits and (not unit.isElite) then scale = nil
 	elseif LocalVars.ScaleIgnoreNeutralUnits and unit.reaction == "NEUTRAL" then scale = nil
 	-- Use SafeIsDamaged for 12.0.0+ secret value handling
-	elseif LocalVars.ScaleIgnoreInactive and not ( SafeIsDamaged(unit) or (unit.isInCombat or UnitIsUnit(unit.unitid.."target", "player") or unit.threatValue > 0) or (unit.isCasting == true) ) then scale = nil
+	elseif LocalVars.ScaleIgnoreInactive and not ( SafeIsDamaged(unit) or (unit.isInCombat or isTargetingPlayerDelegate or unit.threatValue > 0) or (unit.isCasting == true) ) then scale = nil
 	elseif LocalVars.ScaleCastingSpotlight and unit.reaction == "HOSTILE" and unit.isCasting then scale = LocalVars.ScaleSpotlight
 	--elseif LocalVars.ScaleMiniMobs and unit.isMini then
 	--	scale = MiniMobScale
