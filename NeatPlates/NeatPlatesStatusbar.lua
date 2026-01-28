@@ -22,6 +22,12 @@ end
 -- For 12.0.0+, we use a native StatusBar as the PRIMARY visible bar element.
 -- This completely bypasses the secret value issue because the StatusBar natively handles
 -- secret values for rendering without us ever needing to read them back.
+--
+-- TEXTURE COLOR HANDLING:
+-- We use GetStatusBarTexture():SetVertexColor() instead of SetStatusBarColor() for coloring.
+-- SetStatusBarColor() REPLACES the texture's color entirely, losing any gradients baked into
+-- the texture. SetVertexColor() MULTIPLIES with the texture's pixel data, preserving grey
+-- gradients in theme textures (like NeatPlates_Grey's Statusbar.tga) that give the muted look.
 local isMidnight = select(4, GetBuildInfo()) >= 120000
 
 ----------------------------------------------------------------------
@@ -300,6 +306,12 @@ end
 -- SetStatusBarTexture for native StatusBar
 local function SetStatusBarTexture_Native(self, texture)
 	self.NativeBar:SetStatusBarTexture(texture)
+	-- CRITICAL: After setting texture, ensure the StatusBar's own color is white!
+	-- The StatusBar color and texture vertex color multiply together.
+	-- We keep the StatusBar color at white so only the vertex color (which we control) affects rendering.
+	-- This preserves grey gradients baked into theme textures.
+	self.NativeBar:SetStatusBarColor(1, 1, 1, 1)
+
 	-- Store reference to the texture for color operations
 	self.Bar = self.NativeBar:GetStatusBarTexture()
 	-- Also set neutral zone texture if it exists
@@ -309,9 +321,16 @@ local function SetStatusBarTexture_Native(self, texture)
 end
 
 -- SetStatusBarColor for native StatusBar
+-- IMPORTANT: We use GetStatusBarTexture():SetVertexColor() instead of SetStatusBarColor()
+-- because SetStatusBarColor() REPLACES the texture's color entirely, while SetVertexColor()
+-- MULTIPLIES with the texture's pixel data. This preserves grey gradients baked into
+-- theme textures (like NeatPlates_Grey's Statusbar.tga).
 local function SetStatusBarColor_Native(self, r, g, b, a)
 	a = a or 1
-	self.NativeBar:SetStatusBarColor(r, g, b, a)
+	local barTex = self.NativeBar:GetStatusBarTexture()
+	if barTex then
+		barTex:SetVertexColor(r, g, b, a)
+	end
 	if self.Neutral then
 		self.Neutral:SetVertexColor(0, 0, 1, a/2)
 	end
@@ -327,13 +346,15 @@ local function SetStatusBarGradient_Native(self, r1, g1, b1, a1, r2, g2, b2, a2)
 end
 
 -- SetAllColors for native StatusBar
+-- IMPORTANT: We use GetStatusBarTexture():SetVertexColor() instead of SetStatusBarColor()
+-- because SetStatusBarColor() REPLACES the texture's color entirely, while SetVertexColor()
+-- MULTIPLIES with the texture's pixel data. This preserves grey gradients baked into
+-- theme textures (like NeatPlates_Grey's Statusbar.tga).
 local function SetAllColors_Native(self, rBar, gBar, bBar, aBar, rBackdrop, gBackdrop, bBackdrop, aBackdrop)
-	-- Set bar color via native StatusBar
-	self.NativeBar:SetStatusBarColor(rBar or 1, gBar or 1, bBar or 1, aBar or 1)
-
-	-- Store color info for compatibility
+	-- Set bar color via texture's vertex color (preserves texture gradients)
 	local barTex = self.NativeBar:GetStatusBarTexture()
 	if barTex then
+		barTex:SetVertexColor(rBar or 1, gBar or 1, bBar or 1, aBar or 1)
 		barTex.color = {r = rBar or 1, g = gBar or 1, b = bBar or 1, a = aBar or 1}
 	end
 
@@ -431,6 +452,22 @@ local function SetBackdropTexture_Native(self, texture)
 	end
 end
 
+-- SetDesaturated for native StatusBar
+-- Allows themes to apply a desaturation effect to the bar for a muted/grey look
+local function SetDesaturated_Native(self, desaturate)
+	local barTex = self.NativeBar:GetStatusBarTexture()
+	if barTex and barTex.SetDesaturated then
+		barTex:SetDesaturated(desaturate)
+	end
+end
+
+-- SetDesaturated for legacy StatusBar
+local function SetDesaturated_Legacy(self, desaturate)
+	if self.Bar and self.Bar.SetDesaturated then
+		self.Bar:SetDesaturated(desaturate)
+	end
+end
+
 
 ----------------------------------------------------------------------
 -- Factory Function
@@ -463,6 +500,11 @@ function CreateNeatPlatesStatusbar(parent)
 		nativeBar:SetMinMaxValues(0, 1)
 		nativeBar:SetValue(1)
 		nativeBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+		-- CRITICAL: Set the StatusBar's own color to white!
+		-- The StatusBar widget has its own color (SetStatusBarColor) that multiplies with
+		-- the texture's vertex color. If we don't set it to white, it will tint the bar.
+		-- We use SetVertexColor on the texture for actual coloring to preserve texture gradients.
+		nativeBar:SetStatusBarColor(1, 1, 1, 1)
 		frame.NativeBar = nativeBar
 
 		-- Store reference to status bar texture as .Bar for compatibility
@@ -484,6 +526,7 @@ function CreateNeatPlatesStatusbar(parent)
 		frame.SetTexCoord = SetTexCoord_Native
 		frame.SetBackdropTexCoord = SetBackdropTexCoord_Native
 		frame.SetBackdropTexture = SetBackdropTexture_Native
+		frame.SetDesaturated = SetDesaturated_Native
 
 		return frame
 	else
@@ -515,6 +558,7 @@ function CreateNeatPlatesStatusbar(parent)
 		frame.SetTexCoord = SetTexCoord_Legacy
 		frame.SetBackdropTexCoord = SetBackdropTexCoord_Legacy
 		frame.SetBackdropTexture = SetBackdropTexture_Legacy
+		frame.SetDesaturated = SetDesaturated_Legacy
 
 		frame:SetScript("OnSizeChanged", UpdateSize_Legacy)
 		UpdateSize_Legacy(frame)

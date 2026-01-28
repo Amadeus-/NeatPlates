@@ -2285,6 +2285,10 @@ do
 				object:SetBackdropTexture(objectstyle.backdrop)
 			end
 			object:SetTexCoord(objectstyle.left, objectstyle.right, objectstyle.top, objectstyle.bottom)
+			-- Apply desaturation if style requests it (for themes like Grey that want a muted look)
+			if object.SetDesaturated then
+				object:SetDesaturated(objectstyle.desaturated or false)
+			end
 		end
 	end
 
