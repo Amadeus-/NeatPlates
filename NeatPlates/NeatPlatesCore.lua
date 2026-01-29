@@ -810,12 +810,28 @@ local function NameplateEventHandler(self, event, ...)
 			RemoveFromSpellCastCache(UnitGUID(unitid), select(3, ...), true)
 		end
 
-		OnStopCasting(self)
+		-- In 12.0.0+, UNIT_SPELLCAST_CHANNEL_STOP provides interruptedBy as 4th arg
+		-- (unit, castGUID, spellID, interruptedBy). If present, this was an interrupt.
+		local interruptedBy = select(4, ...)
+		if isMidnight and interruptedBy then
+			-- Channel was interrupted - show interrupted state before stopping
+			if not self.extended.unit.interrupted then OnInterruptedCast(self, nil, nil, nil, interruptedBy) end
+		else
+			OnStopCasting(self)
+		end
 	elseif event == "UNIT_SPELLCAST_INTERRUPTED"
 		or event == "UNIT_SPELLCAST_FAILED"
 	then
 		if not ShowCastBars then return end
-		if not self.extended.unit.interrupted then OnInterruptedCast(self) end
+		-- In 12.0.0+, UNIT_SPELLCAST_INTERRUPTED provides interruptedBy as 4th arg
+		-- (unit, castID, spellID, interruptedBy). Extract it for display.
+		local interruptedBy = isMidnight and select(4, ...) or nil
+		if not self.extended.unit.interrupted then
+			OnInterruptedCast(self, nil, nil, nil, interruptedBy)
+		elseif interruptedBy and self.extended.unit.interrupted then
+			-- Already interrupted (e.g., channel stop fired first), but now have interrupter info
+			OnInterruptedCast(self, nil, nil, nil, interruptedBy)
+		end
 	elseif event == "UNIT_SPELLCAST_DELAYED"
 		or event == "UNIT_SPELLCAST_CHANNEL_UPDATE"
 		or event == "UNIT_SPELLCAST_INTERRUPTIBLE"
@@ -894,7 +910,11 @@ do
 			for key, value in pairs(unit) do
 				if unitchanged then break end
 				-- Skip secret value fields that can't be compared in 12.0.0+
-				if not (issecretvalue and issecretvalue(value)) then
+				-- Must check BOTH the current value AND the cached value, because
+				-- the cache may hold a stale secret value from a previous update
+				-- (e.g., spellNotInterruptible was secret during a cast, cached,
+				-- then the cast ended and the field changed to a non-secret value)
+				if not (issecretvalue and (issecretvalue(value) or issecretvalue(unitcache[key]))) then
 					if unitcache[key] ~= value then
 						unitchanged = true
 					end
@@ -1747,10 +1767,15 @@ do
 		unit.isCasting = true
 		unit.interrupted = false
 		unit.interruptLogged = false
-		-- Handle notInterruptible being a SECRET value in 12.0.0+
+		-- Store the raw notInterruptible value for secret-safe color evaluation in 12.0.0+
+		-- This preserves the secret value so CastBarDelegate can use C_CurveUtil.EvaluateColorValueFromBoolean
+		unit.spellNotInterruptible = notInterruptible
+		-- For backwards compatibility, also set the derived boolean fields
+		-- When notInterruptible is a secret, we can't derive these, so we set safe defaults
+		-- The actual color logic will use spellNotInterruptible with secret-safe APIs
 		if issecretvalue and issecretvalue(notInterruptible) then
-			unit.spellIsShielded = false
-			unit.spellInterruptible = true
+			unit.spellIsShielded = nil  -- nil indicates unknown due to secret value
+			unit.spellInterruptible = nil  -- nil indicates unknown due to secret value
 		else
 			unit.spellIsShielded = notInterruptible
 			unit.spellInterruptible = not notInterruptible
@@ -1781,18 +1806,72 @@ do
 				spellSchool = SpellSchoolByGUID[unit.guid]
 			end
 			r, g, b, a = activetheme.SetCastbarColor(unit, spellSchool)
-			if not (r and g and b and a) then return end
+			-- In 12.0.0+, r may be a secret-color-info table (from CastBarDelegate's secret value branch).
+			-- This table contains: { secretBoolean, colorIfTrue, colorIfFalse }
+			-- Use SetStatusBarColorFromBoolean to resolve the color at the C++ rendering level.
+			-- IMPORTANT: Cannot boolean-test r.secretBoolean (it's a secret value); check r.colorIfTrue instead.
+			if type(r) == "table" and r.colorIfTrue then
+				castBar:SetStatusBarColorFromBoolean(r.secretBoolean, r.colorIfTrue, r.colorIfFalse)
+				castBar:SetAlpha(a or 1)
+			else
+				-- Regular color values (non-secret path, or interrupted path)
+				-- Alpha is always a regular value, so check only that
+				-- If alpha is nil, the call failed completely and we should return
+				if a == nil then return end
+				castBar:SetStatusBarColor(r, g, b)
+				castBar:SetAlpha(a or 1)
+			end
+		else
+			castBar:SetStatusBarColor(r, g, b)
+			castBar:SetAlpha(a or 1)
 		end
 
-		castBar:SetStatusBarColor( r, g, b)
-		castBar:SetAlpha(a or 1)
+		-- Handle cast bar border display
+		-- When spellIsShielded is nil (secret value in 12.0.0+), we need to use secret-safe APIs
+		local castnostopEnabled = style.castnostop and style.castnostop.enabled
+		local castborderEnabled = style.castborder and style.castborder.enabled
 
-		if style.castnostop and style.castnostop.enabled and unit.spellIsShielded then
-			visual.castnostop:Show(); visual.castborder:Hide()
-		elseif style.castborder and style.castborder.enabled then
-			visual.castnostop:Hide(); visual.castborder:Show()
+		if unit.spellIsShielded ~= nil then
+			-- Non-secret value, use standard Show/Hide
+			if castnostopEnabled and unit.spellIsShielded then
+				visual.castnostop:Show(); visual.castborder:Hide()
+			elseif castborderEnabled then
+				visual.castnostop:Hide(); visual.castborder:Show()
+			else
+				visual.castnostop:Hide(); visual.castborder:Hide()
+			end
+		elseif isMidnight and issecretvalue and issecretvalue(unit.spellNotInterruptible) then
+			-- Secret value in 12.0.0+, use SetAlphaFromBoolean for secret-safe visibility
+			-- spellNotInterruptible: true = uninterruptible (show castnostop), false = interruptible (show castborder)
+			if castnostopEnabled and castborderEnabled then
+				-- Both overlays available: show one, hide the other based on secret boolean
+				visual.castnostop:Show()
+				visual.castborder:Show()
+				-- castnostop visible when uninterruptible (notInterruptible = true -> alpha 1)
+				visual.castnostop:SetAlphaFromBoolean(unit.spellNotInterruptible)
+				-- castborder visible when interruptible (notInterruptible = true -> hidden, false -> visible)
+				-- SetAlphaFromBoolean(bool, alphaIfTrue, alphaIfFalse)
+				-- We invert: alphaIfTrue=0 (hide when uninterruptible), alphaIfFalse=1 (show when interruptible)
+				visual.castborder:SetAlphaFromBoolean(unit.spellNotInterruptible, 0, 1)
+			elseif castnostopEnabled then
+				visual.castnostop:Show()
+				visual.castnostop:SetAlphaFromBoolean(unit.spellNotInterruptible)
+				visual.castborder:Hide()
+			elseif castborderEnabled then
+				visual.castnostop:Hide()
+				visual.castborder:Show()
+			else
+				visual.castnostop:Hide()
+				visual.castborder:Hide()
+			end
 		else
-			visual.castnostop:Hide(); visual.castborder:Hide()
+			-- No interrupt info available, default to showing regular border
+			visual.castnostop:Hide()
+			if castborderEnabled then
+				visual.castborder:Show()
+			else
+				visual.castborder:Hide()
+			end
 		end
 
 		UpdateIndicator_CustomScaleText()
@@ -1803,16 +1882,41 @@ do
 	end
 
 	-- OnInterruptedCasting
-	function OnInterruptedCast(plate, sourceGUID, sourceName, destGUID)
+	-- sourceGUID/sourceName/destGUID: from pre-12.0.0 CLEU path
+	-- interruptedByGUID: from 12.0.0+ event args (UNIT_SPELLCAST_INTERRUPTED or UNIT_SPELLCAST_CHANNEL_STOP)
+	function OnInterruptedCast(plate, sourceGUID, sourceName, destGUID, interruptedByGUID)
 		UpdateReferences(plate)
 
 		local function setSpellText()
 			local spellString, color
 			local eventText = L["Interrupted"]
 
+			-- Pre-12.0.0 path: sourceGUID from CLEU
 			if sourceGUID and sourceGUID ~= "" and ShowIntWhoCast then
 				local _, engClass = GetPlayerInfoByGUID(sourceGUID)
 				if NEATPLATES_CLASS_COLORS[engClass] then color = ConvertRGBtoColorString(NEATPLATES_CLASS_COLORS[engClass]) end
+			-- 12.0.0+ path: interruptedByGUID from event args
+			elseif interruptedByGUID and ShowIntWhoCast and not (issecretvalue and issecretvalue(interruptedByGUID)) then
+				local interruptName, engClass
+				-- Get interrupter name (UnitNameFromGUID accepts secret GUIDs)
+				if UnitNameFromGUID then
+					interruptName = UnitNameFromGUID(interruptedByGUID)
+					-- interruptName might be a secret value
+					if issecretvalue and issecretvalue(interruptName) then interruptName = nil end
+				end
+				-- Get interrupter class (these do NOT accept secret GUIDs)
+				if GetPlayerInfoByGUID then
+					_, engClass = GetPlayerInfoByGUID(interruptedByGUID)
+				end
+				if not engClass and UnitClassFromGUID then
+					_, engClass = UnitClassFromGUID(interruptedByGUID)
+				end
+				if engClass and NEATPLATES_CLASS_COLORS[engClass] then
+					color = ConvertRGBtoColorString(NEATPLATES_CLASS_COLORS[engClass])
+				end
+				if interruptName then
+					sourceName = interruptName
+				end
 			end
 
 			if sourceName and color then
@@ -1829,6 +1933,9 @@ do
 		-- Main function
 		if unit.interrupted and type and sourceGUID and sourceName and destGUID then
 			setSpellText()
+		elseif unit.interrupted and interruptedByGUID then
+			-- 12.0.0+: Already interrupted, but now we have the interrupter info
+			setSpellText()
 		else
 			if unit.interrupted or not ShowIntCast then return end --not extended:IsShown() or
 
@@ -1844,9 +1951,16 @@ do
 
 			if activetheme.SetCastbarColor then
 				r, g, b, a = activetheme.SetCastbarColor(unit)
-				if not (r and g and b and a) then return end
+				-- In 12.0.0+, r may be a secret-color-info table (though interrupted state
+				-- always returns regular values since unit.interrupted is checked first)
+				-- IMPORTANT: Cannot boolean-test r.secretBoolean (it's a secret value); check r.colorIfTrue instead.
+				if type(r) == "table" and r.colorIfTrue then
+					castBar:SetStatusBarColorFromBoolean(r.secretBoolean, r.colorIfTrue, r.colorIfFalse)
+				else
+					if a == nil then return end
+					castBar:SetStatusBarColor(r, g, b)
+				end
 			end
-			castBar:SetStatusBarColor(r, g, b)
 			castBar:SetMinMaxValues(1, 1)
 
 			setSpellText()
@@ -1882,6 +1996,34 @@ do
 
 		if not extended:IsShown() or unit.interrupted then return end
 		local castBar = extended.visual.castbar
+
+		-- 12.0.0+ race condition fix: UNIT_SPELLCAST_STOP can fire BEFORE
+		-- UNIT_SPELLCAST_INTERRUPTED. Defer hiding by one frame so the
+		-- interrupt handler has a chance to set unit.interrupted = true.
+		if isMidnight then
+			local _extended = extended
+			local _unit = unit
+			local _visual = visual
+			-- Set isCasting = false NOW so the deferred callback can distinguish
+			-- "old cast ended" (isCasting=false) from "new cast started" (isCasting=true).
+			-- OnInterruptedCast also sets isCasting = false, so no conflict there.
+			_unit.isCasting = false
+			C_Timer.After(0, function()
+				-- If the plate was hidden or a NEW cast started, bail out
+				if not _extended:IsShown() or _unit.isCasting then return end
+				-- If the interrupt handler ran in the meantime, let it handle the bar
+				if _unit.interrupted then return end
+				-- No interrupt came — hide the bar normally
+				castBar:Hide()
+				castBar:SetScript("OnUpdate", nil)
+				_visual.spelltarget:SetText("")
+				_unit.interrupted = false
+				UpdateReferences(plate)
+				UpdateIndicator_CustomScaleText()
+				UpdateIndicator_CustomAlpha()
+			end)
+			return
+		end
 
 		castBar:Hide()
 		castBar:SetScript("OnUpdate", nil)
@@ -2083,12 +2225,18 @@ do
 		local unit = plate.extended.unit
 
 		if activetheme.SetCastbarColor then
-			r, g, b, a = activetheme.SetCastbarColor(unit, school)
-			if not (r and g and b and a) then return end
+			local r, g, b, a = activetheme.SetCastbarColor(unit, school)
+			-- In 12.0.0+, r may be a secret-color-info table
+			-- IMPORTANT: Cannot boolean-test r.secretBoolean (it's a secret value); check r.colorIfTrue instead.
+			if type(r) == "table" and r.colorIfTrue then
+				castBar:SetStatusBarColorFromBoolean(r.secretBoolean, r.colorIfTrue, r.colorIfFalse)
+				castBar:SetAlpha(a or 1)
+			else
+				if a == nil then return end
+				castBar:SetStatusBarColor(r, g, b)
+				castBar:SetAlpha(a or 1)
+			end
 		end
-
-		castBar:SetStatusBarColor(r, g, b)
-		castBar:SetAlpha(a or 1)
 	end
 
 	function CoreEvents:COMBAT_LOG_EVENT_UNFILTERED(...)

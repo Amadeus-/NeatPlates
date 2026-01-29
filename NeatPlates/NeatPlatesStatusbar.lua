@@ -336,6 +336,26 @@ local function SetStatusBarColor_Native(self, r, g, b, a)
 	end
 end
 
+-- SetStatusBarColorFromBoolean for native StatusBar (12.0.0+)
+-- Uses SetVertexColorFromBoolean to resolve a secret boolean into one of two colors
+-- at the C++ rendering level. This avoids intermediate secret number values that
+-- can cause blank/colorless bars when passed through SetVertexColor.
+-- secretBoolean: a potentially-secret boolean value
+-- colorIfTrue: ColorMixin for when secretBoolean is true
+-- colorIfFalse: ColorMixin for when secretBoolean is false
+local function SetStatusBarColorFromBoolean_Native(self, secretBoolean, colorIfTrue, colorIfFalse)
+	local barTex = self.NativeBar:GetStatusBarTexture()
+	if barTex and barTex.SetVertexColorFromBoolean then
+		barTex:SetVertexColorFromBoolean(secretBoolean, colorIfTrue, colorIfFalse)
+	end
+	-- Neutral zone doesn't need secret handling
+end
+
+-- No-op for legacy bars (secret values don't exist pre-12.0.0)
+local function SetStatusBarColorFromBoolean_Legacy(self, secretBoolean, colorIfTrue, colorIfFalse)
+	-- Not applicable for pre-12.0.0
+end
+
 -- SetStatusBarGradient for native StatusBar
 -- Note: Native StatusBar doesn't support gradients directly, so we apply to the texture
 local function SetStatusBarGradient_Native(self, r1, g1, b1, a1, r2, g2, b2, a2)
@@ -520,6 +540,7 @@ function CreateNeatPlatesStatusbar(parent)
 		frame.GetMinMaxValues = GetMinMaxValues_Native
 		frame.SetOrientation = SetOrientation_Native
 		frame.SetStatusBarColor = SetStatusBarColor_Native
+		frame.SetStatusBarColorFromBoolean = SetStatusBarColorFromBoolean_Native
 		frame.SetStatusBarGradient = SetStatusBarGradient_Native
 		frame.SetAllColors = SetAllColors_Native
 		frame.SetStatusBarTexture = SetStatusBarTexture_Native
@@ -552,6 +573,7 @@ function CreateNeatPlatesStatusbar(parent)
 		frame.GetMinMaxValues = GetMinMaxValues_Legacy
 		frame.SetOrientation = SetOrientation_Legacy
 		frame.SetStatusBarColor = SetStatusBarColor_Legacy
+		frame.SetStatusBarColorFromBoolean = SetStatusBarColorFromBoolean_Legacy
 		frame.SetStatusBarGradient = SetStatusBarGradient_Legacy
 		frame.SetAllColors = SetAllColors_Legacy
 		frame.SetStatusBarTexture = SetStatusBarTexture_Legacy

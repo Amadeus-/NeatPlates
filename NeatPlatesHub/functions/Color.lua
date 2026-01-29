@@ -333,6 +333,10 @@ end
 -- Cast Bar Color
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
+
+-- Version check for 12.0.0+ (Midnight) API changes - needed for secret value handling
+local isMidnight = select(4, GetBuildInfo()) >= 120000
+
 local function CastBarDelegate(unit, school)
 	local color, alpha
 	local schoolColor = {
@@ -345,26 +349,63 @@ local function CastBarDelegate(unit, school)
 		[64] = LocalVars.ColorSchoolArcane, 	-- Arcane
 	}
 
-
+	-- Handle interrupted state first (not affected by secret values)
 	if unit.interrupted then
 		color = LocalVars.ColorIntpellCast
-	elseif unit.spellInterruptible then
-		if LocalVars.ColorCastBySchool and school and schoolColor[school] then
-			color = schoolColor[school]
+	-- Check if spellInterruptible is known (non-secret value)
+	elseif unit.spellInterruptible ~= nil then
+		-- Normal case: spellInterruptible is a regular boolean
+		if unit.spellInterruptible then
+			if LocalVars.ColorCastBySchool and school and schoolColor[school] then
+				color = schoolColor[school]
+			else
+				color = LocalVars.ColorNormalSpellCast
+			end
 		else
-			color = LocalVars.ColorNormalSpellCast
+			color = LocalVars.ColorUnIntpellCast
 		end
-	else color = LocalVars.ColorUnIntpellCast end
+	-- Handle secret value case (12.0.0+)
+	-- spellNotInterruptible is a secret boolean from UnitCastingInfo/UnitChannelInfo.
+	-- We CANNOT convert it to secret r,g,b values via EvaluateColorValueFromBoolean and then
+	-- pass those to SetVertexColor -- that produces a blank/colorless bar.
+	-- Instead, we return a "secret color info" table that the caller can use with
+	-- SetVertexColorFromBoolean, which resolves the secret at the C++ rendering level.
+	elseif isMidnight and issecretvalue and issecretvalue(unit.spellNotInterruptible) then
+		-- Determine the interruptible color (may be school-based)
+		local interruptibleColor
+		if LocalVars.ColorCastBySchool and school and schoolColor[school] then
+			interruptibleColor = schoolColor[school]
+		else
+			interruptibleColor = LocalVars.ColorNormalSpellCast
+		end
+		local uninterruptibleColor = LocalVars.ColorUnIntpellCast
+
+		-- Determine alpha based on friendly/enemy settings
+		if (unit.reaction == "FRIENDLY" and not LocalVars.SpellCastEnableFriendly) or
+			 (unit.reaction ~= "FRIENDLY" and not LocalVars.SpellCastEnableEnemy) then
+			alpha = 0
+		else
+			alpha = 1
+		end
+
+		-- Return a special table as the first return value, signaling the caller to use
+		-- SetVertexColorFromBoolean instead of SetVertexColor.
+		-- The caller checks: if type(r) == "table" and r.secretBoolean then ...
+		return {
+			secretBoolean = unit.spellNotInterruptible,
+			colorIfTrue = CreateColor(uninterruptibleColor.r, uninterruptibleColor.g, uninterruptibleColor.b, alpha),
+			colorIfFalse = CreateColor(interruptibleColor.r, interruptibleColor.g, interruptibleColor.b, alpha),
+		}, nil, nil, alpha
+	else
+		-- Fallback: treat as uninterruptible if we can't determine
+		color = LocalVars.ColorUnIntpellCast
+	end
 
 	if (unit.reaction == "FRIENDLY" and not LocalVars.SpellCastEnableFriendly) or
 		 (unit.reaction ~= "FRIENDLY" and not LocalVars.SpellCastEnableEnemy) then
 		alpha = 0
 	else alpha = 1 end
 
-	--[[
-	if unit.reaction ~= "FRIENDLY" or LocalVars.SpellCastEnableFriendly then alpha = 1
-	else alpha = 0 end
---]]
 	return color.r, color.g, color.b, alpha
 end
 

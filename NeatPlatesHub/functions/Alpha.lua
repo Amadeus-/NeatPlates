@@ -169,7 +169,19 @@ local function AlphaDelegate(...)
 
 	if (unit.isTarget or (LocalVars.FocusAsTarget and unit.isFocus)) then return Diminish(LocalVars.OpacityTarget)
 	--elseif unit.isCasting and unit.reaction == "HOSTILE" and LocalVars.OpacitySpotlightSpell then alpha = LocalVars.OpacitySpotlight
-	elseif unit.isCasting and LocalVars.OpacitySpotlightSpellInt and unit.spellInterruptible then alpha = LocalVars.OpacitySpotlight
+	elseif unit.isCasting and LocalVars.OpacitySpotlightSpellInt then
+		-- Handle secret value case for interruptible cast spotlight (12.0.0+)
+		-- unit.spellInterruptible will be nil if it's a secret value
+		local isInterruptible = unit.spellInterruptible
+		if isInterruptible == nil and issecretvalue and issecretvalue(unit.spellNotInterruptible) then
+			-- Secret value case: In 12.0.0+, notInterruptible is a secret value
+			-- We CANNOT use C_CurveUtil.EvaluateColorValueFromBoolean and then compare the result,
+			-- because the return value may itself be secret and comparing secret values causes errors.
+			-- Default to not applying spotlight when we can't determine interruptibility.
+			-- The cast bar color will still indicate interruptibility via secret-safe color APIs in Color.lua.
+			isInterruptible = false
+		end
+		if isInterruptible then alpha = LocalVars.OpacitySpotlight end
 	elseif unit.isCasting and LocalVars.OpacitySpotlightSpell then alpha = LocalVars.OpacitySpotlight
 	elseif unit.isMouseover and LocalVars.OpacitySpotlightMouseover then alpha = LocalVars.OpacitySpotlight
 	elseif unit.isMarked and LocalVars.OpacitySpotlightRaidMarked then alpha = LocalVars.OpacitySpotlight
