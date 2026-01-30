@@ -584,7 +584,11 @@ do
 			-- Check for an Update Request
 			if UpdateMe or UpdateHealth then
 				-- Check if we should throttle or not (Don't throttle init, target or mouseover)
-				if plate.initialize or UnitIsUnit("target", unitid) or UnitIsUnit("mouseover", unitid) then
+				local isTarget = UnitIsUnit("target", unitid)
+				local isMouseover = UnitIsUnit("mouseover", unitid)
+				if issecretvalue and issecretvalue(isTarget) then isTarget = false end
+				if issecretvalue and issecretvalue(isMouseover) then isMouseover = false end
+				if plate.initialize or isTarget or isMouseover then
 					if not UpdateMe then
 						OnHealthUpdate(plate)
 					else
@@ -1207,6 +1211,13 @@ do
 		unit.isMouseover = UnitIsUnit("mouseover", unitid)
 		unit.isTarget = UnitIsUnit("target", unitid)
 		unit.isFocus = UnitIsUnit("focus", unitid)
+
+		-- Sanitize secret values from UnitIsUnit (12.0.0+) so they're safe for boolean tests
+		if issecretvalue then
+			if issecretvalue(unit.isMouseover) then unit.isMouseover = false end
+			if issecretvalue(unit.isTarget) then unit.isTarget = false end
+			if issecretvalue(unit.isFocus) then unit.isFocus = false end
+		end
 
 		unit.guid = UnitGUID(unitid)
 
@@ -2075,7 +2086,10 @@ do
 
 			targetname = targetname or ""
 
-			if UnitIsUnit(targetof, "player") then
+			local isPlayer = UnitIsUnit(targetof, "player")
+			if issecretvalue and issecretvalue(isPlayer) then
+				-- Secret value: can't determine if target is player, just show plain name
+			elseif isPlayer then
 				targetname = "|cFFFF1100"..">> "..L["You"].." <<" or ""	-- Red '>> You <<' instead of character name
 			elseif targetclass and NEATPLATES_CLASS_COLORS[targetclass] then
 				targetname = ConvertRGBtoColorString(NEATPLATES_CLASS_COLORS[targetclass])..targetname or ""
@@ -2134,7 +2148,11 @@ do
 
 		-- Ignore if plate is Personal Display
 		if plate then
-			if UnitIsUnit("player", unitid) or UnitIsUnit("softinteract", unitid) then
+			local isPlayerUnit = UnitIsUnit("player", unitid)
+			local isSoftInteract = UnitIsUnit("softinteract", unitid)
+			if issecretvalue and issecretvalue(isPlayerUnit) then isPlayerUnit = false end
+			if issecretvalue and issecretvalue(isSoftInteract) then isSoftInteract = false end
+			if isPlayerUnit or isSoftInteract then
 				plate.showBlizzardPlate = true
 				ShouldShowBlizzardPlate(plate)
 				OnHideNameplate(plate, unitid)
@@ -2178,9 +2196,13 @@ do
 	end
 
 	local function UpdateCustomTarget()
-		local unitAlive = UnitIsDead("target") == false
+		local isDead = UnitIsDead("target")
+		if issecretvalue and issecretvalue(isDead) then isDead = false end
+		local unitAlive = isDead == false
 		local guid = UnitGUID("target")
-		HasTarget = (UnitExists("target") == true and not UnitIsUnit("target", "player"))
+		local isSelfTarget = UnitIsUnit("target", "player")
+		if issecretvalue and issecretvalue(isSelfTarget) then isSelfTarget = false end
+		HasTarget = (UnitExists("target") == true and not isSelfTarget)
 		-- Create a new target frame if needed
 		if not NeatPlatesTarget then
 			NeatPlatesTarget = NeatPlatesUtility:CreateTargetFrame()
@@ -2309,7 +2331,9 @@ do
 		}
 		if (event == "SPELL_AURA_APPLIED" or event == "SPELL_AURA_REMOVED") and fixate[spellID] then
 			plate = PlatesByGUID[sourceGUID]
-			if plate and event == "SPELL_AURA_APPLIED" and UnitIsUnit("player", destName) then
+			local isFixateOnPlayer = UnitIsUnit("player", destName)
+			if issecretvalue and issecretvalue(isFixateOnPlayer) then isFixateOnPlayer = false end
+			if plate and event == "SPELL_AURA_APPLIED" and isFixateOnPlayer then
 				plate.extended.unit.fixate = true 	-- Fixating player
 			elseif plate then
 				plate.extended.unit.fixate = false 	-- NOT Fixating player

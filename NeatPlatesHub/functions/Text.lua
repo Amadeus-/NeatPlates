@@ -100,12 +100,34 @@ end
 
 local function UnitNameDelegate(unit)
 	local unitname = unit.name
-	if LocalVars.TextShowUnitTitle then unitname = unit.pvpname or unit.name end
-	if LocalVars.TextShowServerIndicator and unit.realm then unitname = unitname.." (*)" end
+	-- 12.0.0+: unit.name, unit.pvpname, unit.rawName can be secret values during combat
+	-- Secret values cannot be used in string concatenation or as table indices
+	local nameIsSecret = issecretvalue and issecretvalue(unitname)
+
+	if LocalVars.TextShowUnitTitle then
+		local pvpname = unit.pvpname
+		if pvpname then
+			if issecretvalue and issecretvalue(pvpname) then
+				-- pvpname is secret, fall back to unitname as-is
+			else
+				unitname = pvpname
+				nameIsSecret = false
+			end
+		end
+	end
+
+	if LocalVars.TextShowServerIndicator and unit.realm then
+		if not nameIsSecret and not (issecretvalue and issecretvalue(unit.realm)) then
+			unitname = unitname.." (*)"
+		end
+	end
 
 	-- Overwrite current name with Arena ID
-	local arenaindex = GetArenaIndex(unit.rawName)
-	if LocalVars.TextUnitNameArenaID and unit.type == "PLAYER" and arenaindex then unitname = tostring(GetArenaIndex(unit.rawName)) end
+	local rawName = unit.rawName
+	if not (issecretvalue and issecretvalue(rawName)) then
+		local arenaindex = GetArenaIndex(rawName)
+		if LocalVars.TextUnitNameArenaID and unit.type == "PLAYER" and arenaindex then unitname = tostring(arenaindex) end
+	end
 
 	return unitname
 end
@@ -710,6 +732,8 @@ end
 local function TextUnitTitle(unit)
 	local color = HubData.Colors.White
 	if unit.pvpname and unit.name then
+		-- 12.0.0+: pvpname and name can be secret values during combat; cannot use in string operations
+		if issecretvalue and (issecretvalue(unit.pvpname) or issecretvalue(unit.name)) then return nil end
 		return string.gsub(unit.pvpname, '%s*'..unit.name, ''), color.r, color.g, color.b, .7
 	end
 end

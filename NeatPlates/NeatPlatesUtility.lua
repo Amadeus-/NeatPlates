@@ -39,6 +39,8 @@ NeatPlatesUtility.Colors = {
 
 
 NeatPlatesUtility.IsFriend = function(guid)
+	-- 12.0.0+: guid can be a secret value during combat
+	if issecretvalue and issecretvalue(guid) then return false end
 	info = C_BattleNet.GetGameAccountInfoByGUID(guid)
 	if info == nil then
 		return false
@@ -246,6 +248,10 @@ local function GetUnitSubtitle(unit)
 
 	--local guid = UnitGUID(unitid)
 	local name = unit.name
+
+	-- 12.0.0+: unit.name can be a secret value during combat; cannot use as table index
+	if issecretvalue and issecretvalue(name) then return nil end
+
 	local subTitle = UnitSubtitles[name]
 
 	if not subTitle then
@@ -260,7 +266,10 @@ local function GetUnitSubtitle(unit)
  		name = TooltipTextLeft1:GetText()
 
 		if name then name = gsub( gsub( (name), "|c........", "" ), "|r", "" ) else return end	-- Strip color escape sequences: "|c"
-		if name ~= UnitName(unitid) then return end	-- Avoid caching information for the wrong unit
+		-- 12.0.0+: UnitName can return secret values during combat
+		local checkName = UnitName(unitid)
+		if issecretvalue and issecretvalue(checkName) then return end
+		if name ~= checkName then return end	-- Avoid caching information for the wrong unit
 
 
 		-- Tooltip Format Priority:  Faction, Description, Level
@@ -471,12 +480,17 @@ local arenaUnitIDs = {"arena1", "arena2", "arena3", "arena4", "arena5"}
 
 local function GetArenaIndex(unitname)
 	-- Kinda hackish.  would be faster to cache the arena names using event handler.  later!
+	-- 12.0.0+: unitname (from unit.rawName) can be a secret value during combat
+	if issecretvalue and issecretvalue(unitname) then return nil end
 	if IsActiveBattlefieldArena() then
 		local unitid, name
 		for i = 1, #arenaUnitIDs do
 			unitid = arenaUnitIDs[i]
 			name = UnitName(unitid)
-			if name and (name == unitname) then return i end
+			-- 12.0.0+: UnitName can return secret values during combat
+			if issecretvalue and issecretvalue(name) then
+				-- skip this arena unit, can't compare
+			elseif name and (name == unitname) then return i end
 		end
 	end
 end
