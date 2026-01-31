@@ -202,7 +202,6 @@ local function DebugAura(msg)
 end
 
 local PlayerGUID = UnitGUID("player")
-local PolledHideIn = NeatPlatesWidgets.PolledHideIn
 local FilterFunction = function() return 1 end
 local AuraMonitor = CreateFrame("Frame")
 local WatcherIsEnabled = false
@@ -354,22 +353,10 @@ end
 -- Widget Object Functions
 -------------------------------------------------------------
 
+-- UpdateWidgetTime: REMOVED (old custom timer text system)
+-- Timer display is now handled entirely by Blizzard's built-in CooldownFrame countdown numbers
+-- via SetCooldownFromDurationObject. This function is kept as a no-op for safety.
 local function UpdateWidgetTime(frame, expiration)
-	if expiration <= 0 or HideAuraDuration then
-		frame.TimeLeft:SetText("")
-	else
-		local timeleft = expiration-GetTime()
-		if timeleft > 60 then
-			frame.TimeLeft:SetText(floor(timeleft/60).."m")
-		else
-			if timeleft < PreciseAuraThreshold then
-				frame.TimeLeft:SetText((("%%.%df"):format(1)):format(timeleft))
-			else
-				frame.TimeLeft:SetText(floor(timeleft))
-			end
-			--frame.TimeLeft:SetText(floor(timeleft*10)/10)
-		end
-	end
 end
 
 local function UpdateAuraHighlighting(frame, aura)
@@ -448,8 +435,7 @@ local function UpdateIcon(frame, aura)
 		UpdateAuraHighlighting(frame, aura)
 
 		-- Cooldown - Use duration object API if available (handles secrets properly)
-		-- In 12.0.0+, duration/expirationTime are secret values, so we must use the
-		-- built-in Cooldown countdown numbers instead of the custom TimeLeft text
+		-- All paths use Blizzard's built-in CooldownFrame countdown numbers for timer display
 		local useDurationObjectAPI = aura.durationObject and frame.Cooldown.SetCooldownFromDurationObject
 
 		if useDurationObjectAPI then
@@ -469,39 +455,33 @@ local function UpdateIcon(frame, aura)
 			frame.Cooldown:SetCooldownFromDurationObject(aura.durationObject, true)
 			frame.Cooldown:SetDrawSwipe(not HideCooldownSpiral)
 			frame.Cooldown:SetDrawEdge(not HideCooldownSpiral)
-			-- Hide custom TimeLeft text - the built-in countdown handles it
-			frame.TimeLeft:SetText("")
 		elseif aura.duration and aura.duration > 0 and aura.expiration and aura.expiration > 0 then
 			-- Legacy path for pre-12.0.0 or when duration values are available
-			-- Use custom TimeLeft text, hide built-in countdown
-			frame.Cooldown:SetHideCountdownNumbers(true)
-			frame.Cooldown.noCooldownCount = not HideAuraDuration
+			-- Use built-in countdown numbers (same as durationObject path)
+			if not HideAuraDuration then
+				frame.Cooldown:SetHideCountdownNumbers(false)
+				frame.Cooldown.noCooldownCount = false
+			else
+				frame.Cooldown:SetHideCountdownNumbers(true)
+				frame.Cooldown.noCooldownCount = true
+			end
 			if frame.Cooldown.SetUseAuraDisplayTime then
 				frame.Cooldown:SetUseAuraDisplayTime(false)
 			end
 			frame.Cooldown:SetCooldown(aura.expiration - aura.duration, aura.duration + 0.25)
 			frame.Cooldown:SetDrawSwipe(not HideCooldownSpiral)
 			frame.Cooldown:SetDrawEdge(not HideCooldownSpiral)
-			-- Use custom TimeLeft text for the countdown
-			UpdateWidgetTime(frame, aura.expiration)
 		else
 			-- No duration info - just show static icon (no cooldown spiral or timer)
 			frame.Cooldown:SetHideCountdownNumbers(true)
 			frame.Cooldown:SetCooldown(0, 0)
-			frame.TimeLeft:SetText("")
 		end
 
 		frame:Show()
 
-
-		-- Only set expiration hide timer if we have a valid expiration time
-		-- In 12.0.0+, expiration may be 0 (secret value), but UNIT_AURA events will handle updates
-		local expirationTime = aura.expiration or 0
-		if expirationTime > 0 then
-			PolledHideIn(frame, expirationTime, "UpdateIcon")
-		end
+		-- Aura visibility is driven by UNIT_AURA events; no polling needed
 	elseif frame then
-		PolledHideIn(frame, 0)
+		frame:Hide()
 	end
 end
 
@@ -962,14 +942,6 @@ local function TransformWideAura(frame)
 		frame.BorderHighlight:SetTexture(WideHighlightArt)
 	end
 
-	--  Time Text
-	frame.TimeLeft:SetFont(AuraFont ,9, "OUTLINE")
-	frame.TimeLeft:SetShadowOffset(1, -1)
-	frame.TimeLeft:SetShadowColor(0,0,0,1)
-	frame.TimeLeft:SetPoint("RIGHT", 0, 8)
-	frame.TimeLeft:SetWidth(26)
-	frame.TimeLeft:SetHeight(16)
-	frame.TimeLeft:SetJustifyH("RIGHT")
 	--  Stacks
 	frame.Stacks:SetFont(AuraFont,10, "OUTLINE")
 	frame.Stacks:SetShadowOffset(1, -1)
@@ -1010,14 +982,6 @@ local function TransformSquareAura(frame)
 		frame.BorderHighlight:SetAllPoints(frame.Border)
 		frame.BorderHighlight:SetTexture(SquareHighlightArt)
 	end
-	--  Time Text
-	frame.TimeLeft:SetFont(AuraFont ,9, "OUTLINE")
-	frame.TimeLeft:SetShadowOffset(1, -1)
-	frame.TimeLeft:SetShadowColor(0,0,0,1)
-	frame.TimeLeft:SetPoint("RIGHT", 0, 8)
-	frame.TimeLeft:SetWidth(26)
-	frame.TimeLeft:SetHeight(16)
-	frame.TimeLeft:SetJustifyH("RIGHT")
 	--  Stacks
 	frame.Stacks:SetFont(AuraFont,10, "OUTLINE")
 	frame.Stacks:SetShadowOffset(1, -1)
@@ -1058,8 +1022,9 @@ local function CreateAuraIcon(parent)
 
 	frame.Info:SetAllPoints(frame)
 
-	-- Text
+	-- Text (TimeLeft kept as hidden stub to prevent nil reference errors in custom themes)
 	frame.TimeLeft = frame.Info:CreateFontString(nil, "OVERLAY")
+	frame.TimeLeft:Hide()
 	frame.Stacks = frame.Info:CreateFontString(nil, "OVERLAY")
 
 	-- Information about the currently displayed aura
@@ -1072,7 +1037,6 @@ local function CreateAuraIcon(parent)
 	}
 
 	frame.Expire = ExpireFunction
-	frame.Poll = UpdateWidgetTime
 	frame:Hide()
 
 	return frame
