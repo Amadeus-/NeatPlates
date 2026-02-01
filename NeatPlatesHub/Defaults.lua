@@ -356,6 +356,7 @@ NeatPlatesHubDefaults = {
 	HideAuraDuration = false,
 	HideAuraStacks = false,
 	HideAuraInHeadline = false,
+	ShowAuraTooltip = true,
 	BlizzardStyleIcons = false,
 
 	-- Frame

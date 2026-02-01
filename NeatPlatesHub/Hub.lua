@@ -304,8 +304,10 @@ local function BuildHubPanel(panel)
 	panel.HideAuraStacks.tooltipText = L["Hides the duration text on Auras. (Use this if you want something like OmniCC to handle the aura durations."]
 	panel.HideAuraInHeadline = CreateQuickCheckbutton(objectName.."HideAuraInHeadline", L["Hide Aura Widget in Headline Mode"], AlignmentColumn, panel.HideAuraStacks, 16, 0)
 	panel.HideAuraInHeadline.tooltipText = L["Hides the aura widget when in 'Headline/Text-Only' mode"]
+	panel.ShowAuraTooltip = CreateQuickCheckbutton(objectName.."ShowAuraTooltip", L["Show Aura Tooltips"], AlignmentColumn, panel.HideAuraInHeadline, 16, 0)
+	panel.ShowAuraTooltip.tooltipText = L["Shows a tooltip when hovering over aura icons on nameplates"]
 
-	panel.WidgetAuraTrackDispelFriendly = CreateQuickCheckbutton(objectName.."WidgetAuraTrackDispelFriendly", L["Include Dispellable Debuffs on Friendly Units"], AlignmentColumn, panel.HideAuraInHeadline, 16, 4)
+	panel.WidgetAuraTrackDispelFriendly = CreateQuickCheckbutton(objectName.."WidgetAuraTrackDispelFriendly", L["Include Dispellable Debuffs on Friendly Units"], AlignmentColumn, panel.ShowAuraTooltip, 16, 4)
 	panel.WidgetAuraTrackCurse = CreateQuickCheckbutton(objectName.."WidgetAuraTrackCurse", L["Curse"], AlignmentColumn, panel.WidgetAuraTrackDispelFriendly, 16+16, -2)
 	panel.WidgetAuraTrackDisease = CreateQuickCheckbutton(objectName.."WidgetAuraTrackDisease", L["Disease"], AlignmentColumn, panel.WidgetAuraTrackCurse, 16+16, -2)
 	panel.WidgetAuraTrackMagic = CreateQuickCheckbutton(objectName.."WidgetAuraTrackMagic", L["Magic"], AlignmentColumn, panel.WidgetAuraTrackDisease, 16+16, -2)

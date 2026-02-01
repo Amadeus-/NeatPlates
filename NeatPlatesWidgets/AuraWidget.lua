@@ -264,6 +264,7 @@ local ButtonGlowEnabled = {
 local HideCooldownSpiral = false
 local HideAuraDuration = false
 local HideAuraStacks = false
+local ShowAuraTooltip = true
 
 -- Get a clean version of the function...  Avoid OmniCC interference
 -- local CooldownNative = CreateFrame("Cooldown", nil, WorldFrame)
@@ -409,6 +410,12 @@ local function UpdateIcon(frame, aura)
 	-- Early exit if no aura provided (used for cleanup of empty slots)
 	if not aura then
 		if frame then
+			frame.auraInstanceID = nil
+			frame.spellid = nil
+			frame.unitid = nil
+			if GameTooltip:IsOwned(frame) then
+				GameTooltip:Hide()
+			end
 			frame:Hide()
 		end
 		return
@@ -475,10 +482,22 @@ local function UpdateIcon(frame, aura)
 			frame.Cooldown:SetCooldown(0, 0)
 		end
 
+		-- Store data for tooltip
+		frame.auraInstanceID = aura.auraInstanceID
+		frame.spellid = aura.spellid or aura.safeSpellId
+		frame.unitid = aura.unit
+
 		frame:Show()
 
 		-- Aura visibility is driven by UNIT_AURA events; no polling needed
 	elseif frame then
+		-- Clear tooltip data and dismiss tooltip if hovering
+		frame.auraInstanceID = nil
+		frame.spellid = nil
+		frame.unitid = nil
+		if GameTooltip:IsOwned(frame) then
+			GameTooltip:Hide()
+		end
 		frame:Hide()
 	end
 end
@@ -1032,6 +1051,32 @@ local function CreateAuraIcon(parent)
 	}
 
 	frame.Expire = ExpireFunction
+
+	-- Tooltip support
+	frame:EnableMouse(true)
+	frame:SetMouseClickEnabled(false)  -- Clicks pass through to nameplate
+
+	frame:SetScript("OnEnter", function(self)
+		if not ShowAuraTooltip then return end
+		if self.auraInstanceID and self.unitid then
+			GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+			if GameTooltip.SetUnitAuraByAuraInstanceID then
+				GameTooltip:SetUnitAuraByAuraInstanceID(self.unitid, self.auraInstanceID)
+			elseif self.spellid then
+				GameTooltip:SetSpellByID(self.spellid)
+			end
+			GameTooltip:Show()
+		elseif self.spellid then
+			GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+			GameTooltip:SetSpellByID(self.spellid)
+			GameTooltip:Show()
+		end
+	end)
+
+	frame:SetScript("OnLeave", function(self)
+		GameTooltip:Hide()
+	end)
+
 	frame:Hide()
 
 	return frame
@@ -1251,6 +1296,7 @@ local function SetAuraOptions(LocalVars)
 	HideCooldownSpiral = LocalVars.HideCooldownSpiral
 	HideAuraDuration = LocalVars.HideAuraDuration
 	HideAuraStacks = LocalVars.HideAuraStacks
+	ShowAuraTooltip = LocalVars.ShowAuraTooltip
 	AuraScale = LocalVars.AuraScale
 	EmphasizedAuraScale = LocalVars.EmphasizedAuraScale
 	AuraAlignment = Alignments[LocalVars.WidgetAuraAlignment]
