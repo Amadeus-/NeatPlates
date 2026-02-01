@@ -1704,25 +1704,79 @@ do
 	end
 
 
-	local function OnUpdateCastBarForward(self)
-		local currentTime = GetTime() * 1000
-		local startTime, endTime = self:GetMinMaxValues()
-		local text = ""
-		if activetheme.SetCastbarDuration then text = activetheme.SetCastbarDuration(currentTime, startTime, endTime) end
+	-- Cast bar OnUpdate handlers
+	-- 12.0.0+: Bar fill is driven by SetTimerDuration at the C++ level; OnUpdate only updates duration text.
+	-- Pre-12.0.0: OnUpdate drives both bar fill and duration text using normalized (0, durationSec) range.
 
-		self.durationtext:SetText(text)
-		self:SetValue(currentTime)
+	local function OnUpdateCastBarForward(self)
+		if isMidnight and self._castDuration then
+			-- 12.0.0+: Bar fill handled by SetTimerDuration; only update text
+			local text = ""
+			if activetheme.SetCastbarDuration then
+				-- Reconstruct millisecond values for the theme callback
+				local elapsed = self._castDuration:GetElapsedDuration()
+				local total = self._castDuration:GetTotalDuration()
+				-- Handle secret values: if elapsed/total are secret, produce empty text
+				if (issecretvalue and (issecretvalue(elapsed) or issecretvalue(total))) then
+					text = ""
+				else
+					local now = GetTime() * 1000
+					local st = now - (elapsed * 1000)
+					local et = st + (total * 1000)
+					text = activetheme.SetCastbarDuration(now, st, et)
+				end
+			end
+			self.durationtext:SetText(text)
+		else
+			-- Pre-12.0.0: Normalized range (0, durationSec)
+			local now = GetTime()
+			local elapsed = now - (self._startTimeSec or now)
+			self:SetValue(elapsed)
+			local text = ""
+			if activetheme.SetCastbarDuration then
+				-- Reconstruct millisecond values for the theme callback
+				local currentMs = now * 1000
+				local startMs = (self._startTimeSec or now) * 1000
+				local endMs = startMs + ((self._durationSec or 0) * 1000)
+				text = activetheme.SetCastbarDuration(currentMs, startMs, endMs)
+			end
+			self.durationtext:SetText(text)
+		end
 	end
 
 
 	local function OnUpdateCastBarReverse(self)
-		local currentTime = GetTime() * 1000
-		local startTime, endTime = self:GetMinMaxValues()
-		local text = ""
-		if activetheme.SetCastbarDuration then text = activetheme.SetCastbarDuration(currentTime, startTime, endTime, true) end
-
-		self.durationtext:SetText(text)
-		self:SetValue((endTime + startTime) - currentTime)
+		if isMidnight and self._castDuration then
+			-- 12.0.0+: Bar fill handled by SetTimerDuration; only update text
+			local text = ""
+			if activetheme.SetCastbarDuration then
+				local elapsed = self._castDuration:GetElapsedDuration()
+				local total = self._castDuration:GetTotalDuration()
+				if (issecretvalue and (issecretvalue(elapsed) or issecretvalue(total))) then
+					text = ""
+				else
+					local now = GetTime() * 1000
+					local st = now - (elapsed * 1000)
+					local et = st + (total * 1000)
+					text = activetheme.SetCastbarDuration(now, st, et, true)
+				end
+			end
+			self.durationtext:SetText(text)
+		else
+			-- Pre-12.0.0: Normalized range (0, durationSec), reverse fill
+			local now = GetTime()
+			local elapsed = now - (self._startTimeSec or now)
+			local remaining = (self._durationSec or 0) - elapsed
+			self:SetValue(remaining)
+			local text = ""
+			if activetheme.SetCastbarDuration then
+				local currentMs = now * 1000
+				local startMs = (self._startTimeSec or now) * 1000
+				local endMs = startMs + ((self._durationSec or 0) * 1000)
+				text = activetheme.SetCastbarDuration(currentMs, startMs, endMs, true)
+			end
+			self.durationtext:SetText(text)
+		end
 	end
 
 	-- OnShowCastbar
@@ -1770,6 +1824,32 @@ do
 			end
 
 			if isTradeSkill then return end
+
+			-- 12.0.0+: Use SetTimerDuration for smooth C++-driven bar fill animation.
+			-- This avoids floating-point precision loss from raw epoch-millisecond timestamps.
+			if isMidnight and castBar.NativeBar and UnitCastingDuration and UnitChannelDuration then
+				local duration
+				if channeled then
+					duration = UnitChannelDuration(unitid)
+				else
+					duration = UnitCastingDuration(unitid)
+				end
+				if duration then
+					-- Store the duration object on castBar for OnUpdate text handlers
+					castBar._castDuration = duration
+					-- Drive the bar fill from C++ using the duration object
+					local direction = channeled
+						and Enum.StatusBarTimerDirection.RemainingTime
+						or Enum.StatusBarTimerDirection.ElapsedTime
+					castBar.NativeBar:SetTimerDuration(duration, Enum.StatusBarInterpolation.Immediate, direction)
+				else
+					-- Fallback: no duration object, use normalized approach
+					castBar._castDuration = nil
+				end
+			else
+				-- Pre-12.0.0 or no NativeBar: clear duration object
+				castBar._castDuration = nil
+			end
 		end
 
 		-- Set 'notInterruptible' to false, Because we cannot tell if it's interruptible or not in classic
@@ -1806,7 +1886,41 @@ do
 		end
 		visual.durationtext:SetText("")
 		visual.spellicon:SetTexture(texture)
-		castBar:SetMinMaxValues(startTime or 0, endTime or 0)
+
+		-- Set up cast bar range and store timing data for OnUpdate handlers
+		if castBar._castDuration then
+			-- 12.0.0+: Bar fill driven by SetTimerDuration (already called above).
+			-- Do NOT call SetMinMaxValues on the NativeBar here, as it could interfere
+			-- with the SetTimerDuration-driven animation. Only update the wrapper's stored
+			-- values so GetMinMaxValues returns something sensible if queried.
+			local total = castBar._castDuration:GetTotalDuration()
+			if issecretvalue and issecretvalue(total) then
+				castBar.MinVal = 0
+				castBar.MaxVal = 1
+			else
+				castBar.MinVal = 0
+				castBar.MaxVal = total
+			end
+			-- Clear legacy timing fields
+			castBar._startTimeSec = nil
+			castBar._durationSec = nil
+		else
+			-- Pre-12.0.0 (or Classic Era): Use normalized range to avoid floating-point
+			-- precision loss from raw epoch-millisecond timestamps.
+			local st = startTime or 0
+			local et = endTime or 0
+			-- startTime/endTime may be secret values on 12.0.0+ (fallback path)
+			if issecretvalue and (issecretvalue(st) or issecretvalue(et)) then
+				castBar:SetMinMaxValues(0, 1)
+				castBar._startTimeSec = GetTime()
+				castBar._durationSec = 1
+			else
+				local durationSec = (et - st) / 1000
+				castBar:SetMinMaxValues(0, durationSec)
+				castBar._startTimeSec = st / 1000
+				castBar._durationSec = durationSec
+			end
+		end
 
 		local r, g, b, a = 1, 1, 0, 1
 
@@ -1973,6 +2087,10 @@ do
 				end
 			end
 			castBar:SetMinMaxValues(1, 1)
+			-- Clean up cast timing data
+			castBar._castDuration = nil
+			castBar._startTimeSec = nil
+			castBar._durationSec = nil
 
 			setSpellText()
 
@@ -2027,6 +2145,9 @@ do
 				-- No interrupt came — hide the bar normally
 				castBar:Hide()
 				castBar:SetScript("OnUpdate", nil)
+				castBar._castDuration = nil
+				castBar._startTimeSec = nil
+				castBar._durationSec = nil
 				_visual.spelltarget:SetText("")
 				_unit.interrupted = false
 				UpdateReferences(plate)
@@ -2038,6 +2159,9 @@ do
 
 		castBar:Hide()
 		castBar:SetScript("OnUpdate", nil)
+		castBar._castDuration = nil
+		castBar._startTimeSec = nil
+		castBar._durationSec = nil
 
 		visual.spelltarget:SetText("")
 
