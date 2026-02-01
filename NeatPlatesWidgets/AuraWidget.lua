@@ -424,9 +424,11 @@ local function UpdateIcon(frame, aura)
 		-- Icon - SetTexture accepts secret values (SecretArguments = "AllowedWhenTainted")
 		frame.Icon:SetTexture(aura.texture)
 
-		-- Stacks - SetText accepts secret values
-		if not HideAuraStacks and aura.stacks and aura.stacks > 1 then
-			frame.Stacks:SetText(aura.stacks)
+		-- Stacks - SetText accepts secret values at the engine level
+		-- Use applicationsString (raw API value, possibly secret) for direct display
+		-- The API returns "" for stacks < 2, so no numeric comparison needed
+		if not HideAuraStacks and aura.applicationsString then
+			frame.Stacks:SetText(aura.applicationsString)
 		else
 			frame.Stacks:SetText("")
 		end
@@ -448,10 +450,6 @@ local function UpdateIcon(frame, aura)
 				frame.Cooldown:SetHideCountdownNumbers(true)
 				frame.Cooldown.noCooldownCount = true
 			end
-			-- Use aura display timing mode for correct synchronization
-			if frame.Cooldown.SetUseAuraDisplayTime then
-				frame.Cooldown:SetUseAuraDisplayTime(true)
-			end
 			frame.Cooldown:SetCooldownFromDurationObject(aura.durationObject, true)
 			frame.Cooldown:SetDrawSwipe(not HideCooldownSpiral)
 			frame.Cooldown:SetDrawEdge(not HideCooldownSpiral)
@@ -466,9 +464,9 @@ local function UpdateIcon(frame, aura)
 				frame.Cooldown.noCooldownCount = true
 			end
 			if frame.Cooldown.SetUseAuraDisplayTime then
-				frame.Cooldown:SetUseAuraDisplayTime(false)
+				frame.Cooldown:SetUseAuraDisplayTime(true)
 			end
-			frame.Cooldown:SetCooldown(aura.expiration - aura.duration, aura.duration + 0.25)
+			frame.Cooldown:SetCooldown(aura.expiration - aura.duration, aura.duration)
 			frame.Cooldown:SetDrawSwipe(not HideCooldownSpiral)
 			frame.Cooldown:SetDrawEdge(not HideCooldownSpiral)
 		else
@@ -538,8 +536,9 @@ local function UpdateIconGrid(frame, unitid)
 					-- These bypass the secret value restrictions
 					if HAS_STACK_DISPLAY_API then
 						-- GetAuraApplicationDisplayCount returns a pre-formatted string (may be secret in 12.0.0+)
-						local stackStr = C_UnitAuras.GetAuraApplicationDisplayCount(unitid, auraInstanceID, 2, 1000)
-						stackStr = SafeValue(stackStr)  -- Returns nil if secret
+						-- Store raw value for direct SetText use (SetText accepts secret values)
+						aura.applicationsString = C_UnitAuras.GetAuraApplicationDisplayCount(unitid, auraInstanceID, 2, 1000)
+						local stackStr = SafeValue(aura.applicationsString)  -- Returns nil if secret
 						aura.stacks = (stackStr and stackStr ~= "") and tonumber(stackStr) or 1
 					else
 						aura.stacks = SafeValue(auraData.applications) or 1
@@ -1010,10 +1009,6 @@ local function CreateAuraIcon(parent)
 	frame.Cooldown:SetReverse(true)
 	frame.Cooldown:SetHideCountdownNumbers(true)  -- Will be overridden per-aura in UpdateIcon
 	frame.Cooldown:SetDrawEdge(true)
-	-- Pre-configure for aura display timing if available (WoW 12.0.0+)
-	if frame.Cooldown.SetUseAuraDisplayTime then
-		frame.Cooldown:SetUseAuraDisplayTime(true)
-	end
 	-- Set a smaller font for countdown numbers to fit small aura icons (16-26 pixels)
 	-- The default countdown font is designed for larger frames like action buttons (~36-45px)
 	if frame.Cooldown.SetCountdownFont then
