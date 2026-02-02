@@ -63,6 +63,7 @@ local function DebugRaidIcon(msg)
 	end
 end
 
+
 -- Local References
 local _
 local max = math.max
@@ -700,6 +701,13 @@ do
 		visual.spelltarget = castbar:CreateFontString(nil, "OVERLAY")
 		visual.durationtext = castbar:CreateFontString(nil, "OVERLAY")
 		castbar.durationtext = visual.durationtext -- Extra reference for updating castbars duration text
+		-- Dedicated FontString for interrupter name display (12.0.0+)
+		-- Displays the interrupter's name inline to the LEFT of spelltext:
+		-- "[Name] interrupted..." where Name is on interrupterName and " interrupted..." is on spelltext.
+		-- Anchor is set dynamically during interrupt display; no default anchor needed.
+		visual.interrupterName = castbar:CreateFontString(nil, "OVERLAY")
+		visual.interrupterName:SetFontObject("NeatPlatesFontNormal")
+		visual.interrupterName:Hide()
 		-- Set Base Properties
 		visual.raidicon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
 		visual.highlight:SetAllPoints(visual.healthborder)
@@ -823,19 +831,20 @@ local function NameplateEventHandler(self, event, ...)
 		else
 			OnStopCasting(self)
 		end
-	elseif event == "UNIT_SPELLCAST_INTERRUPTED"
-		or event == "UNIT_SPELLCAST_FAILED"
-	then
+	elseif event == "UNIT_SPELLCAST_INTERRUPTED" then
 		if not ShowCastBars then return end
-		-- In 12.0.0+, UNIT_SPELLCAST_INTERRUPTED provides interruptedBy as 4th arg
-		-- (unit, castID, spellID, interruptedBy). Extract it for display.
+		-- In 12.0.0+, UNIT_SPELLCAST_INTERRUPTED provides interruptedBy GUID as 4th arg
 		local interruptedBy = isMidnight and select(4, ...) or nil
+
 		if not self.extended.unit.interrupted then
 			OnInterruptedCast(self, nil, nil, nil, interruptedBy)
 		elseif interruptedBy and self.extended.unit.interrupted then
 			-- Already interrupted (e.g., channel stop fired first), but now have interrupter info
 			OnInterruptedCast(self, nil, nil, nil, interruptedBy)
 		end
+	elseif event == "UNIT_SPELLCAST_FAILED" then
+		if not ShowCastBars then return end
+		OnInterruptedCast(self, nil, nil, nil, nil)
 	elseif event == "UNIT_SPELLCAST_DELAYED"
 		or event == "UNIT_SPELLCAST_CHANNEL_UPDATE"
 		or event == "UNIT_SPELLCAST_INTERRUPTIBLE"
@@ -1877,6 +1886,14 @@ do
 		--castBar:UnregisterEvent("COMBAT_LOG_EVENT_UNFILTERED");
 
 		OnUpdateCastTarget(plate, unitid)
+		-- Hide interrupter name from any previous interrupt and restore spelltext's normal anchor
+		visual.interrupterName:Hide()
+		visual.interrupterName:SetText("")
+		if style and style.spelltext then
+			visual.spelltext:SetWidth(style.spelltext.width or 128)
+			visual.spelltext:ClearAllPoints()
+			visual.spelltext:SetPoint(style.spelltext.anchor or "CENTER", extended, style.spelltext.anchor or "CENTER", style.spelltext.x or 0, style.spelltext.y or 0)
+		end
 
 		-- Set spell text & duration
 		if ShowCastSpellName then
@@ -2013,56 +2030,94 @@ do
 		UpdateReferences(plate)
 
 		local function setSpellText()
-			local spellString, color
 			local eventText = L["Interrupted"]
 
-			-- Pre-12.0.0 path: sourceGUID from CLEU
-			if sourceGUID and sourceGUID ~= "" and ShowIntWhoCast then
-				local _, engClass = GetPlayerInfoByGUID(sourceGUID)
-				if NEATPLATES_CLASS_COLORS[engClass] then color = ConvertRGBtoColorString(NEATPLATES_CLASS_COLORS[engClass]) end
-			-- 12.0.0+ path: interruptedByGUID from event args
-			elseif interruptedByGUID and ShowIntWhoCast and not (issecretvalue and issecretvalue(interruptedByGUID)) then
+			if isMidnight and interruptedByGUID and ShowIntWhoCast then
+				-- 12.0.0+ path: Mirrors Platynator's CastInterrupterTextMixin:UpdateFromGUID.
+				-- UnitNameFromGUID and GetPlayerInfoByGUID may return secret values during combat.
+				-- Secret values are passed directly to C++ engine APIs (SetText, SetTextColor)
+				-- which handle them at the native level. No issecretvalue checks needed.
+
 				local interruptName, engClass
-				-- Get interrupter name (UnitNameFromGUID accepts secret GUIDs)
 				if UnitNameFromGUID then
 					interruptName = UnitNameFromGUID(interruptedByGUID)
-					-- interruptName might be a secret value
-					if issecretvalue and issecretvalue(interruptName) then interruptName = nil end
-				end
-				-- Get interrupter class (these do NOT accept secret GUIDs)
-				if GetPlayerInfoByGUID then
 					_, engClass = GetPlayerInfoByGUID(interruptedByGUID)
+				else
+					local unitToken = UnitTokenFromGUID(interruptedByGUID)
+					if unitToken then
+						interruptName = UnitName(unitToken)
+						engClass = UnitClassBase(unitToken)
+					end
 				end
-				if not engClass and UnitClassFromGUID then
-					_, engClass = UnitClassFromGUID(interruptedByGUID)
-				end
-				if engClass and NEATPLATES_CLASS_COLORS[engClass] then
-					color = ConvertRGBtoColorString(NEATPLATES_CLASS_COLORS[engClass])
-				end
-				if interruptName then
-					sourceName = interruptName
-				end
-			end
 
-			if sourceName and color then
-				spellString = eventText.." "..color.."("..sourceName..")"
+				if interruptName ~= nil then
+					-- Inline display: "Interrupted (NAME)" on a single line.
+					-- spelltext shows "Interrupted " centered at its normal style position,
+					-- interrupterName shows "(NAME)" in class color anchored to its right.
+					-- SetText, SetFormattedText, and SetTextColor accept secret values at the C++ level.
+
+					-- Match spelltext's current theme font
+					visual.interrupterName:SetFont(visual.spelltext:GetFont())
+
+					-- SetFormattedText wraps the secret name in parens at the C++ level
+					visual.interrupterName:SetFormattedText("(%s)", interruptName)
+
+					-- Apply class color (C_ClassColor accepts secret className)
+					if engClass ~= nil and C_ClassColor then
+						visual.interrupterName:SetTextColor(C_ClassColor.GetClassColor(engClass):GetRGB())
+					else
+						visual.interrupterName:SetTextColor(1, 1, 1)
+					end
+
+					-- Position spelltext at LEFT of castbar so "Interrupted (Name)" reads
+					-- left-to-right naturally. SetWidth(0) makes spelltext auto-size to
+					-- text content so its RIGHT edge is at the actual end of "Interrupted "
+					-- (not at theme-set width), allowing interrupterName to anchor there.
+					visual.spelltext:SetWidth(0)
+					visual.spelltext:ClearAllPoints()
+					visual.spelltext:SetPoint("TOPLEFT", visual.castbar, "BOTTOMLEFT", 2, -2)
+					visual.spelltext:SetText("Interrupted ")
+
+					-- Position interrupterName to the right of spelltext
+					visual.interrupterName:ClearAllPoints()
+					visual.interrupterName:SetPoint("LEFT", visual.spelltext, "RIGHT", 0, 0)
+					visual.interrupterName:Show()
+				else
+					-- No interrupter name available (outside-player interrupt)
+					visual.interrupterName:SetText("")
+					visual.interrupterName:Hide()
+					visual.spelltext:SetText(eventText)
+				end
 			else
-				spellString = eventText
-			end
+				-- Pre-12.0.0 path: sourceGUID/sourceName from CLEU. No secret values here.
+				local color
+				if sourceGUID and sourceGUID ~= "" and ShowIntWhoCast then
+					local _, engClass = GetPlayerInfoByGUID(sourceGUID)
+					if engClass and NEATPLATES_CLASS_COLORS[engClass] then
+						color = ConvertRGBtoColorString(NEATPLATES_CLASS_COLORS[engClass])
+					end
+				end
 
-			visual.spelltext:SetText(spellString)
+				if sourceName and color then
+					visual.spelltext:SetFormattedText("%s %s(%s)", eventText, color, sourceName)
+				elseif sourceName then
+					visual.spelltext:SetFormattedText("%s (%s)", eventText, sourceName)
+				else
+					visual.spelltext:SetText(eventText)
+				end
+			end
 			visual.durationtext:SetText("")
-			visual.spelltarget:SetText("")
 		end
 
 		-- Main function
-		if unit.interrupted and type and sourceGUID and sourceName and destGUID then
+		if unit.interrupted and sourceGUID and sourceName and destGUID then
+			-- Pre-12.0.0: CLEU data arrived after UNIT_SPELLCAST_INTERRUPTED already set unit.interrupted
 			setSpellText()
 		elseif unit.interrupted and interruptedByGUID then
 			-- 12.0.0+: Already interrupted, but now we have the interrupter info
 			setSpellText()
 		else
-			if unit.interrupted or not ShowIntCast then return end --not extended:IsShown() or
+			if unit.interrupted or not ShowIntCast then return end
 
 			unit.interrupted = true
 			unit.isCasting = false
@@ -2078,7 +2133,6 @@ do
 				r, g, b, a = activetheme.SetCastbarColor(unit)
 				-- In 12.0.0+, r may be a secret-color-info table (though interrupted state
 				-- always returns regular values since unit.interrupted is checked first)
-				-- IMPORTANT: Cannot boolean-test r.secretBoolean (it's a secret value); check r.colorIfTrue instead.
 				if type(r) == "table" and r.colorIfTrue then
 					castBar:SetStatusBarColorFromBoolean(r.secretBoolean, r.colorIfTrue, r.colorIfFalse)
 				else
@@ -2109,9 +2163,6 @@ do
 				if not _unit.isCasting and not stopFade then
 					_unit.interrupted = false
 					castBar:Hide()
-
-					--UpdateIndicator_CustomScaleText()
-					--UpdateIndicator_CustomAlpha()
 				end
 			end)
 
@@ -2149,6 +2200,8 @@ do
 				castBar._startTimeSec = nil
 				castBar._durationSec = nil
 				_visual.spelltarget:SetText("")
+				_visual.interrupterName:Hide()
+				_visual.interrupterName:SetText("")
 				_unit.interrupted = false
 				UpdateReferences(plate)
 				UpdateIndicator_CustomScaleText()
@@ -2164,6 +2217,8 @@ do
 		castBar._durationSec = nil
 
 		visual.spelltarget:SetText("")
+		visual.interrupterName:Hide()
+		visual.interrupterName:SetText("")
 
 		unit.isCasting = false
 		unit.interrupted = false

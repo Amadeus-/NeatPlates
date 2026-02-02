@@ -2096,10 +2096,21 @@ do
 	local MAX_DEBUG_ENTRIES = 1000
 	local debugFrame = nil
 
+	-- Safely convert a value to a string, handling secret values that reject tostring()
+	local function SafeToString(val)
+		if val == nil then return "nil" end
+		-- Check for secret values first (12.0.0+) to avoid tostring errors
+		if issecretvalue and issecretvalue(val) then return "<secret>" end
+		local ok, str = pcall(tostring, val)
+		if ok then return str end
+		return "<error:" .. type(val) .. ">"
+	end
+
 	-- Add a debug message to the log
 	local function AddDebugMessage(category, msg)
 		local timestamp = date("%H:%M:%S")
-		local entry = timestamp .. " [" .. category .. "] " .. tostring(msg)
+		-- Sanitize all parts to prevent secret values from reaching table.concat
+		local entry = timestamp .. " [" .. SafeToString(category) .. "] " .. SafeToString(msg)
 		table.insert(DebugLog, entry)
 
 		-- Keep max entries
@@ -2118,7 +2129,13 @@ do
 		-- Create the main frame using UIPanelDialogTemplate
 		local frame = CreateFrame("Frame", "NeatPlatesDebugFrame", UIParent, "UIPanelDialogTemplate")
 		frame:SetSize(700, 450)
-		frame:SetPoint("CENTER")
+		-- Restore saved position, or default to CENTER
+		if NeatPlatesSettings and NeatPlatesSettings.DebugWindowPosition then
+			local pos = NeatPlatesSettings.DebugWindowPosition
+			frame:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4])
+		else
+			frame:SetPoint("CENTER")
+		end
 		frame:SetMovable(true)
 		frame:SetClampedToScreen(true)
 		frame:SetFrameStrata("HIGH")
@@ -2136,6 +2153,11 @@ do
 		end)
 		dragArea:SetScript("OnDragStop", function(self)
 			frame:StopMovingOrSizing()
+			-- Save position to saved variables
+			local point, _, relativePoint, x, y = frame:GetPoint(1)
+			if point and NeatPlatesSettings then
+				NeatPlatesSettings.DebugWindowPosition = {point, relativePoint, x, y}
+			end
 		end)
 
 		-- Set the title

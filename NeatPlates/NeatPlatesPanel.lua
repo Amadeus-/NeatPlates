@@ -91,6 +91,7 @@ NeatPlatesSettings = {
 	DefaultProfile = L["Default"],
 
 	GlobalAdditonalAuras = {},
+	DebugWindowPosition = nil,	-- {point, relativePoint, x, y} saved when debug window is moved
 }
 
 NeatPlatesOptions = {
