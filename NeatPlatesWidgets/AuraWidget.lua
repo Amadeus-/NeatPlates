@@ -122,34 +122,37 @@ if C_UnitAuras and C_UnitAuras.GetUnitAuras then
 		end
 
 		-- Also get other auras (for custom aura lists that might reference non-nameplate auras)
-		-- Apply |PLAYER filter when "Show Mine" is active
-		local debuffFilter = "HARMFUL" .. debuffPlayerFilter
-		local buffFilter = "HELPFUL" .. buffPlayerFilter
+		-- Skip these passes when "Show Important Auras Only" is enabled
+		if not ShowImportantAurasOnly then
+			-- Apply |PLAYER filter when "Show Mine" is active
+			local debuffFilter = "HARMFUL" .. debuffPlayerFilter
+			local buffFilter = "HELPFUL" .. buffPlayerFilter
 
-		local allDebuffs = C_UnitAuras.GetUnitAuras(unit, debuffFilter) or {}
-		local allBuffs = C_UnitAuras.GetUnitAuras(unit, buffFilter) or {}
+			local allDebuffs = C_UnitAuras.GetUnitAuras(unit, debuffFilter) or {}
+			local allBuffs = C_UnitAuras.GetUnitAuras(unit, buffFilter) or {}
 
-		-- Debug: Log counts from each filter
-		if NEATPLATES_DEBUG_AURAS and NeatPlatesUtility and NeatPlatesUtility.Debug then
-			NeatPlatesUtility.Debug.Log("Aura", "  Filter: " .. debuffFilter .. " -> " .. #allDebuffs .. " auras")
-			NeatPlatesUtility.Debug.Log("Aura", "  Filter: " .. buffFilter .. " -> " .. #allBuffs .. " auras")
-		end
-
-		for _, auraData in ipairs(allDebuffs) do
-			if not seenIds[auraData.auraInstanceID] then
-				seenIds[auraData.auraInstanceID] = true
-				auraData.isHarmful = true
-				auraData.isHelpful = false
-				table.insert(auras, auraData)
+			-- Debug: Log counts from each filter
+			if NEATPLATES_DEBUG_AURAS and NeatPlatesUtility and NeatPlatesUtility.Debug then
+				NeatPlatesUtility.Debug.Log("Aura", "  Filter: " .. debuffFilter .. " -> " .. #allDebuffs .. " auras")
+				NeatPlatesUtility.Debug.Log("Aura", "  Filter: " .. buffFilter .. " -> " .. #allBuffs .. " auras")
 			end
-		end
 
-		for _, auraData in ipairs(allBuffs) do
-			if not seenIds[auraData.auraInstanceID] then
-				seenIds[auraData.auraInstanceID] = true
-				auraData.isHarmful = false
-				auraData.isHelpful = true
-				table.insert(auras, auraData)
+			for _, auraData in ipairs(allDebuffs) do
+				if not seenIds[auraData.auraInstanceID] then
+					seenIds[auraData.auraInstanceID] = true
+					auraData.isHarmful = true
+					auraData.isHelpful = false
+					table.insert(auras, auraData)
+				end
+			end
+
+			for _, auraData in ipairs(allBuffs) do
+				if not seenIds[auraData.auraInstanceID] then
+					seenIds[auraData.auraInstanceID] = true
+					auraData.isHarmful = false
+					auraData.isHelpful = true
+					table.insert(auras, auraData)
+				end
 			end
 		end
 
@@ -265,6 +268,7 @@ local HideCooldownSpiral = false
 local HideAuraDuration = false
 local HideAuraStacks = false
 local ShowAuraTooltip = true
+local ShowImportantAurasOnly = true
 
 -- Get a clean version of the function...  Avoid OmniCC interference
 -- local CooldownNative = CreateFrame("Cooldown", nil, WorldFrame)
@@ -1297,6 +1301,7 @@ local function SetAuraOptions(LocalVars)
 	HideAuraDuration = LocalVars.HideAuraDuration
 	HideAuraStacks = LocalVars.HideAuraStacks
 	ShowAuraTooltip = LocalVars.ShowAuraTooltip
+	ShowImportantAurasOnly = LocalVars.ShowImportantAurasOnly
 	AuraScale = LocalVars.AuraScale
 	EmphasizedAuraScale = LocalVars.EmphasizedAuraScale
 	AuraAlignment = Alignments[LocalVars.WidgetAuraAlignment]

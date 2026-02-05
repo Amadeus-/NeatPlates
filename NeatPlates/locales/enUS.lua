@@ -271,6 +271,8 @@ L["Hide Aura Stacks"] = true
 L["Hide Aura Widget in Headline Mode"] = true
 L["Show Aura Tooltips"] = true
 L["Shows a tooltip when hovering over aura icons on nameplates"] = true
+L["Show Important Auras Only"] = true
+L["When enabled, only shows auras that Blizzard considers important for nameplates"] = true
 L["Icon Style"] = true
 	-- Icon Style Dropdown
 	L["Wide"] = true

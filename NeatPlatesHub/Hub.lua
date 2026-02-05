@@ -306,8 +306,10 @@ local function BuildHubPanel(panel)
 	panel.HideAuraInHeadline.tooltipText = L["Hides the aura widget when in 'Headline/Text-Only' mode"]
 	panel.ShowAuraTooltip = CreateQuickCheckbutton(objectName.."ShowAuraTooltip", L["Show Aura Tooltips"], AlignmentColumn, panel.HideAuraInHeadline, 16, 0)
 	panel.ShowAuraTooltip.tooltipText = L["Shows a tooltip when hovering over aura icons on nameplates"]
+	panel.ShowImportantAurasOnly = CreateQuickCheckbutton(objectName.."ShowImportantAurasOnly", L["Show Important Auras Only"], AlignmentColumn, panel.ShowAuraTooltip, 16, 0)
+	panel.ShowImportantAurasOnly.tooltipText = L["When enabled, only shows auras that Blizzard considers important for nameplates"]
 
-	panel.WidgetAuraTrackDispelFriendly = CreateQuickCheckbutton(objectName.."WidgetAuraTrackDispelFriendly", L["Include Dispellable Debuffs on Friendly Units"], AlignmentColumn, panel.ShowAuraTooltip, 16, 4)
+	panel.WidgetAuraTrackDispelFriendly = CreateQuickCheckbutton(objectName.."WidgetAuraTrackDispelFriendly", L["Include Dispellable Debuffs on Friendly Units"], AlignmentColumn, panel.ShowImportantAurasOnly, 16, 4)
 	panel.WidgetAuraTrackCurse = CreateQuickCheckbutton(objectName.."WidgetAuraTrackCurse", L["Curse"], AlignmentColumn, panel.WidgetAuraTrackDispelFriendly, 16+16, -2)
 	panel.WidgetAuraTrackDisease = CreateQuickCheckbutton(objectName.."WidgetAuraTrackDisease", L["Disease"], AlignmentColumn, panel.WidgetAuraTrackCurse, 16+16, -2)
 	panel.WidgetAuraTrackMagic = CreateQuickCheckbutton(objectName.."WidgetAuraTrackMagic", L["Magic"], AlignmentColumn, panel.WidgetAuraTrackDisease, 16+16, -2)
