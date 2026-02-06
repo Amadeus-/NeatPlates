@@ -746,6 +746,8 @@ L["Filter"] = true
 L["Type"] = true
 L["Empty aura"] = true
 
+L["Custom aura filters are unavailable in WoW 12.0+ due to Blizzard API restrictions."] = true
+
 
 ------------------------------
 -- Import Settings Prompt

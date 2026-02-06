@@ -318,7 +318,7 @@ end
 -----------------------------------------------------
 
 
-local function EventUnitAura(unitid)
+local function EventUnitAura(unitid, updateInfo)
 	local frame
 
 	if unitid then frame = WidgetList[unitid] end
@@ -551,7 +551,6 @@ local function UpdateIconGrid(frame, unitid)
 				aura.caster = auraData.sourceUnit
 				aura.unit = unitid
 				aura.auraInstanceID = auraInstanceID
-
 
 				-- Wrap the rest of aura processing in pcall to catch any errors
 				local processSuccess, processErr = pcall(function()

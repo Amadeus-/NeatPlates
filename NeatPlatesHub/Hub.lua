@@ -13,6 +13,11 @@ Color Guide:
 local L = LibStub("AceLocale-3.0"):GetLocale("NeatPlates")
 local AceSerializer = LibStub("AceSerializer-3.0")
 
+-- Version detection for 12.0.0+ (Midnight)
+-- In WoW 12.0+, all aura data (name, spellId, etc.) is secret during combat,
+-- making custom aura list filtering non-functional.
+local isMidnight = NeatPlatesHubHelpers and NeatPlatesHubHelpers.isMidnight or (select(4, GetBuildInfo()) >= 120000)
+
 -- Rapid Panel Functions
 local CreateQuickSlider = NeatPlatesHubRapidPanel.CreateQuickSlider
 local CreateQuickCheckbutton = NeatPlatesHubRapidPanel.CreateQuickCheckbutton
@@ -281,20 +286,36 @@ local function BuildHubPanel(panel)
 	panel.WidgetAuraAlignment =  CreateQuickDropdown(objectName.."WidgetAuraAlignment", L["Aura Alignment"]..':', AuraAlignmentModes, 1, AlignmentColumn, panel.WidgetDebuffStyle, 16)
 	panel.BuffSeparationMode =  CreateQuickDropdown(objectName.."BuffSeparationModes", L["Buff Separation Mode"]..':', BuffSeparationModes, 1, AlignmentColumn, panel.WidgetDebuffStyle, OffsetColumnB)
 
-	panel.WidgetDebuffListLabel = CreateQuickItemLabel(nil, L["Additional Auras"]..':', AlignmentColumn, panel.WidgetAuraAlignment, 16)
-	-- panel.WidgetDebuffTrackList = CreateQuickEditbox(objectName.."WidgetDebuffTrackList", nil, nil, AlignmentColumn, panel.WidgetDebuffListLabel, 16)
-	-- PanelHelpers.CreateEditBoxButton(panel.WidgetDebuffTrackList, panel.onEditboxOkay)
+	-- Additional Auras section: version-gated for pre-12.0 only
+	-- In WoW 12.0+, aura data (name, spellId) is secret during combat, making custom aura
+	-- list filtering non-functional. The entire Additional Auras management UI is hidden.
+	local additionalAurasAnchor -- Used for anchoring subsequent elements
+	if not isMidnight then
+		panel.WidgetDebuffListLabel = CreateQuickItemLabel(nil, L["Additional Auras"]..':', AlignmentColumn, panel.WidgetAuraAlignment, 16)
+		-- panel.WidgetDebuffTrackList = CreateQuickEditbox(objectName.."WidgetDebuffTrackList", nil, nil, AlignmentColumn, panel.WidgetDebuffListLabel, 16)
+		-- PanelHelpers.CreateEditBoxButton(panel.WidgetDebuffTrackList, panel.onEditboxOkay)
 
-	-- panel.EmphasizedAuraListLabel = CreateQuickItemLabel(nil, L["Emphasized Auras"]..':', AlignmentColumn, panel.WidgetAuraAlignment, OffsetColumnB + 64)
-	-- panel.EmphasizedAuraList = CreateQuickEditbox(objectName.."EmphasizedAuraList", nil, nil, AlignmentColumn, panel.EmphasizedAuraListLabel, OffsetColumnB + 64)
-	-- panel.EmphasizedAuraTip = PanelHelpers:CreateTipBox(objectName.."AuraTip", L["AURA_TIP"], AlignmentColumn, "BOTTOMRIGHT", panel.EmphasizedAuraList, "TOPRIGHT", 6, 0)
-	-- PanelHelpers.CreateEditBoxButton(panel.EmphasizedAuraList, panel.onEditboxOkay)
+		-- panel.EmphasizedAuraListLabel = CreateQuickItemLabel(nil, L["Emphasized Auras"]..':', AlignmentColumn, panel.WidgetAuraAlignment, OffsetColumnB + 64)
+		-- panel.EmphasizedAuraList = CreateQuickEditbox(objectName.."EmphasizedAuraList", nil, nil, AlignmentColumn, panel.EmphasizedAuraListLabel, OffsetColumnB + 64)
+		-- panel.EmphasizedAuraTip = PanelHelpers:CreateTipBox(objectName.."AuraTip", L["AURA_TIP"], AlignmentColumn, "BOTTOMRIGHT", panel.EmphasizedAuraList, "TOPRIGHT", 6, 0)
+		-- PanelHelpers.CreateEditBoxButton(panel.EmphasizedAuraList, panel.onEditboxOkay)
 
-	panel.WidgetAdditionalAuras = PanelHelpers:CreateAuraManagement(objectName.."WidgetAdditionalAuras", AlignmentColumn, 500, 150)
-	panel.WidgetAdditionalAuras:SetPoint("TOPLEFT", panel.WidgetDebuffListLabel, "BOTTOMLEFT", 0, -10)
-	panel.WidgetDebuffAuraTip = PanelHelpers:CreateTipBox(objectName.."AuraTip", L["AURA_TIP"], AlignmentColumn, "BOTTOMRIGHT", panel.WidgetAdditionalAuras, "TOPRIGHT", 6, 0)
+		panel.WidgetAdditionalAuras = PanelHelpers:CreateAuraManagement(objectName.."WidgetAdditionalAuras", AlignmentColumn, 500, 150)
+		panel.WidgetAdditionalAuras:SetPoint("TOPLEFT", panel.WidgetDebuffListLabel, "BOTTOMLEFT", 0, -10)
+		panel.WidgetDebuffAuraTip = PanelHelpers:CreateTipBox(objectName.."AuraTip", L["AURA_TIP"], AlignmentColumn, "BOTTOMRIGHT", panel.WidgetAdditionalAuras, "TOPRIGHT", 6, 0)
 
-	panel.EmphasizedUnique = CreateQuickCheckbutton(objectName.."EmphasizedUnique", L["Emphasize Hides Normal Aura"], AlignmentColumn, panel.WidgetAdditionalAuras, 16, 24)
+		additionalAurasAnchor = panel.WidgetAdditionalAuras
+	else
+		-- 12.0+: Show notice that custom aura filters are unavailable
+		panel.AuraFilterUnavailableLabel = AlignmentColumn:CreateFontString(nil, 'ARTWORK', 'GameFontNormalSmall')
+		panel.AuraFilterUnavailableLabel:SetPoint("TOPLEFT", panel.WidgetAuraAlignment, "BOTTOMLEFT", 16, -8)
+		panel.AuraFilterUnavailableLabel:SetWidth(480)
+		panel.AuraFilterUnavailableLabel:SetJustifyH("LEFT")
+		panel.AuraFilterUnavailableLabel:SetText("|cff999999" .. L["Custom aura filters are unavailable in WoW 12.0+ due to Blizzard API restrictions."])
+		additionalAurasAnchor = panel.AuraFilterUnavailableLabel
+	end
+
+	panel.EmphasizedUnique = CreateQuickCheckbutton(objectName.."EmphasizedUnique", L["Emphasize Hides Normal Aura"], AlignmentColumn, additionalAurasAnchor, 16, 24)
 	panel.EmphasizedUnique.tooltipText = L["Hides the regular aura from the aura widget if it is currently emphasized"]
 	panel.HideCooldownSpiral = CreateQuickCheckbutton(objectName.."HideCooldownSpiral", L["Hide Cooldown Spiral"], AlignmentColumn, panel.EmphasizedUnique, 16, 0)
 	panel.HideCooldownSpiral.tooltipText = L["Hides the Cooldown Spiral on Auras"]

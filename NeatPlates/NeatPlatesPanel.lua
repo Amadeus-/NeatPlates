@@ -8,6 +8,9 @@ NeatPlatesHubMenus = NeatPlatesHubMenus or {}
 
 local L = LibStub("AceLocale-3.0"):GetLocale("NeatPlates")
 
+-- Version detection for 12.0.0+ (Midnight)
+local isMidnight = select(4, GetBuildInfo()) >= 120000
+
 local SetTheme = NeatPlatesInternal.SetTheme	-- Use the protected version
 
 local GetAddOnMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
@@ -477,7 +480,9 @@ local function SetPanelValues(panel)
 	-- panel.GlobalAuraEditBox:SetValue(NeatPlatesSettings.GlobalAuraList)
 	-- panel.GlobalEmphasizedAuraEditBox:SetValue(NeatPlatesSettings.GlobalEmphasizedAuraList)
 
-	panel.GlobalAdditonalAuras:SetValue(NeatPlatesSettings.GlobalAdditonalAuras)
+	if panel.GlobalAdditonalAuras then
+		panel.GlobalAdditonalAuras:SetValue(NeatPlatesSettings.GlobalAdditonalAuras)
+	end
 
 	-- Class Colors
 	SetClassColors(panel)
@@ -866,34 +871,50 @@ local function BuildInterfacePanel(panel)
 	panel.GeneralAuraLabel:SetPoint("TOPLEFT", panel.EnemyAutomation, "BOTTOMLEFT", 0, -20)
 	panel.GeneralAuraLabel:SetTextColor(255/255, 105/255, 6/255)
 
-	-- -- Global Additional Auras
-	panel.GlobalAuraLabel = panel:CreateFontString(nil, 'ARTWORK', 'GameFontNormal')
-	panel.GlobalAuraLabel:SetPoint("TOPLEFT", panel.GeneralAuraLabel, "BOTTOMLEFT", 0, -8)
-	panel.GlobalAuraLabel:SetWidth(190)
-	panel.GlobalAuraLabel:SetJustifyH("LEFT")
-	panel.GlobalAuraLabel:SetText(L["Additional Auras"]..':')
+	-- General Aura Filters: version-gated for pre-12.0 only
+	-- In WoW 12.0+, aura data (name, spellId) is secret during combat, making custom
+	-- aura list filtering non-functional. The entire aura management UI is hidden.
+	local globalAuraAnchor -- Used for anchoring the next section
+	if not isMidnight then
+		-- -- Global Additional Auras
+		panel.GlobalAuraLabel = panel:CreateFontString(nil, 'ARTWORK', 'GameFontNormal')
+		panel.GlobalAuraLabel:SetPoint("TOPLEFT", panel.GeneralAuraLabel, "BOTTOMLEFT", 0, -8)
+		panel.GlobalAuraLabel:SetWidth(190)
+		panel.GlobalAuraLabel:SetJustifyH("LEFT")
+		panel.GlobalAuraLabel:SetText(L["Additional Auras"]..':')
 
-	-- panel.GlobalAuraEditBox = PanelHelpers.CreateEditBox("NeatPlatesOptions_GlobalAuraEditBox", nil, nil, panel, panel.GlobalAuraLabel, 16, 0)
-	-- panel.GlobalAuraEditBox:SetWidth(200)
-	-- PanelHelpers.CreateEditBoxButton(panel.GlobalAuraEditBox, function() OnOkay(_panel) end)
+		-- panel.GlobalAuraEditBox = PanelHelpers.CreateEditBox("NeatPlatesOptions_GlobalAuraEditBox", nil, nil, panel, panel.GlobalAuraLabel, 16, 0)
+		-- panel.GlobalAuraEditBox:SetWidth(200)
+		-- PanelHelpers.CreateEditBoxButton(panel.GlobalAuraEditBox, function() OnOkay(_panel) end)
 
 
-	-- -- Global Emphasized Auras
-	-- panel.GlobalEmphasizedAuraLabel = panel:CreateFontString(nil, 'ARTWORK', 'GameFontNormal')
-	-- panel.GlobalEmphasizedAuraLabel:SetPoint("TOPLEFT", panel.GlobalAuraLabel, "TOPRIGHT", 64, 0)
-	-- panel.GlobalEmphasizedAuraLabel:SetWidth(170)
-	-- panel.GlobalEmphasizedAuraLabel:SetJustifyH("LEFT")
-	-- panel.GlobalEmphasizedAuraLabel:SetText(L["Emphasized Auras"]..':')
+		-- -- Global Emphasized Auras
+		-- panel.GlobalEmphasizedAuraLabel = panel:CreateFontString(nil, 'ARTWORK', 'GameFontNormal')
+		-- panel.GlobalEmphasizedAuraLabel:SetPoint("TOPLEFT", panel.GlobalAuraLabel, "TOPRIGHT", 64, 0)
+		-- panel.GlobalEmphasizedAuraLabel:SetWidth(170)
+		-- panel.GlobalEmphasizedAuraLabel:SetJustifyH("LEFT")
+		-- panel.GlobalEmphasizedAuraLabel:SetText(L["Emphasized Auras"]..':')
 
-	-- panel.GlobalEmphasizedAuraEditBox = PanelHelpers.CreateEditBox("NeatPlatesOptions_GlobalEmphasizedAuraEditBox", nil, nil, panel, panel.GlobalEmphasizedAuraLabel, 264, 0)
-	-- panel.GlobalEmphasizedAuraEditBox:SetWidth(200)
-	-- PanelHelpers.CreateEditBoxButton(panel.GlobalEmphasizedAuraEditBox, function() OnOkay(_panel) end)
+		-- panel.GlobalEmphasizedAuraEditBox = PanelHelpers.CreateEditBox("NeatPlatesOptions_GlobalEmphasizedAuraEditBox", nil, nil, panel, panel.GlobalEmphasizedAuraLabel, 264, 0)
+		-- panel.GlobalEmphasizedAuraEditBox:SetWidth(200)
+		-- PanelHelpers.CreateEditBoxButton(panel.GlobalEmphasizedAuraEditBox, function() OnOkay(_panel) end)
 
-	-- panel.GlobalEmphasizedAuraTip = PanelHelpers:CreateTipBox("NeatPlatesOptions_GlobalEmphasizedAuraTip", L["AURA_TIP"], panel, "BOTTOMRIGHT", panel.GlobalEmphasizedAuraEditBox, "TOPRIGHT", 6, 0)
+		-- panel.GlobalEmphasizedAuraTip = PanelHelpers:CreateTipBox("NeatPlatesOptions_GlobalEmphasizedAuraTip", L["AURA_TIP"], panel, "BOTTOMRIGHT", panel.GlobalEmphasizedAuraEditBox, "TOPRIGHT", 6, 0)
 
-	panel.GlobalAdditonalAuras = PanelHelpers:CreateAuraManagement("GlobalAdditonalAuras", panel, 500, 150)
-	panel.GlobalAdditonalAuras:SetPoint("TOPLEFT", panel.GlobalAuraLabel, "BOTTOMLEFT", 0, -10)
-	panel.GlobalAuraTip = PanelHelpers:CreateTipBox("NeatPlatesOptions_GlobalAuraTip", L["AURA_TIP"], panel, "BOTTOMRIGHT", panel.GlobalAdditonalAuras, "TOPRIGHT", 6, 0)
+		panel.GlobalAdditonalAuras = PanelHelpers:CreateAuraManagement("GlobalAdditonalAuras", panel, 500, 150)
+		panel.GlobalAdditonalAuras:SetPoint("TOPLEFT", panel.GlobalAuraLabel, "BOTTOMLEFT", 0, -10)
+		panel.GlobalAuraTip = PanelHelpers:CreateTipBox("NeatPlatesOptions_GlobalAuraTip", L["AURA_TIP"], panel, "BOTTOMRIGHT", panel.GlobalAdditonalAuras, "TOPRIGHT", 6, 0)
+
+		globalAuraAnchor = panel.GlobalAdditonalAuras
+	else
+		-- 12.0+: Show notice that custom aura filters are unavailable
+		panel.GlobalAuraUnavailableLabel = panel:CreateFontString(nil, 'ARTWORK', 'GameFontNormalSmall')
+		panel.GlobalAuraUnavailableLabel:SetPoint("TOPLEFT", panel.GeneralAuraLabel, "BOTTOMLEFT", 0, -8)
+		panel.GlobalAuraUnavailableLabel:SetWidth(480)
+		panel.GlobalAuraUnavailableLabel:SetJustifyH("LEFT")
+		panel.GlobalAuraUnavailableLabel:SetText("|cff999999" .. L["Custom aura filters are unavailable in WoW 12.0+ due to Blizzard API restrictions."])
+		globalAuraAnchor = panel.GlobalAuraUnavailableLabel
+	end
 
 	----------------------------------------------
 	-- Other Options
@@ -903,7 +924,7 @@ local function BuildInterfacePanel(panel)
 	panel.OtherOptionsLabel:SetFont(font, 22, "")
 	panel.OtherOptionsLabel:SetText(L["Other Options"])
 	-- panel.OtherOptionsLabel:SetPoint("TOPLEFT", panel.GlobalAuraEditBox, "BOTTOMLEFT", 0, -20)
-	panel.OtherOptionsLabel:SetPoint("TOPLEFT", panel.GlobalAdditonalAuras, "BOTTOMLEFT", 0, -30)
+	panel.OtherOptionsLabel:SetPoint("TOPLEFT", globalAuraAnchor, "BOTTOMLEFT", 0, -30)
 	panel.OtherOptionsLabel:SetTextColor(255/255, 105/255, 6/255)
 
 	if NEATPLATES_IS_CLASSIC then
@@ -1399,6 +1420,113 @@ SlashCmdList['NeatPlatesDebug'] = function(arg)
 		else
 			print(orange.."NeatPlates: "..red.."Aura debug: OFF")
 		end
+	elseif arg == "secrettest" then
+		-- One-shot secret value test on target's auras via GetAuraDataByAuraInstanceID
+		if not (NeatPlatesUtility and NeatPlatesUtility.Debug) then
+			print(orange.."NeatPlates: "..red.."Debug system not available.")
+			return
+		end
+
+		local DL = NeatPlatesUtility.Debug.Log
+
+		-- Clear old output so results are easy to find
+		NeatPlatesUtility.Debug.Clear()
+
+		local ok, err = pcall(function()
+			local inCombat = InCombatLockdown()
+			local hasIssecretvalue = (issecretvalue ~= nil)
+
+			DL("SecretTest", "=== SECRET VALUE TEST (GetAuraDataByAuraInstanceID) ===")
+			DL("SecretTest", "Unit: target")
+			DL("SecretTest", "In Combat: " .. tostring(inCombat))
+			DL("SecretTest", "issecretvalue available: " .. tostring(hasIssecretvalue))
+			DL("SecretTest", "")
+
+			if not UnitExists("target") then
+				DL("SecretTest", "ERROR: No target selected. Target a unit and retry.")
+				DL("SecretTest", "=== END SECRET VALUE TEST ===")
+				return
+			end
+
+			local targetName = UnitName("target")
+			local targetNameSecret = hasIssecretvalue and issecretvalue(targetName)
+			DL("SecretTest", "Target name: " .. (targetNameSecret and "<SECRET>" or tostring(targetName)) .. " (secret=" .. tostring(targetNameSecret) .. ")")
+			DL("SecretTest", "")
+
+			-- Helper: check a single field and format the result
+			local function CheckField(fieldName, value)
+				local isSecret = hasIssecretvalue and issecretvalue(value)
+				local displayVal
+				if isSecret then
+					displayVal = "<SECRET>"
+				elseif value == nil then
+					displayVal = "nil"
+				else
+					local sok, sval = pcall(tostring, value)
+					displayVal = sok and sval or "<tostring error>"
+				end
+				return "    " .. fieldName .. " = " .. displayVal .. " (secret=" .. tostring(isSecret) .. ")"
+			end
+
+			-- Fields to inspect on each AuraData table
+			local fieldsToCheck = {
+				"name", "spellId", "auraInstanceID", "sourceUnit",
+				"duration", "expirationTime", "icon", "dispelName",
+				"isHelpful", "isHarmful", "isFromPlayerOrPlayerPet",
+				"applications", "charges", "maxCharges",
+				"timeMod", "points",
+			}
+
+			-- Process one filter type
+			local function ProcessFilter(filterStr, label)
+				local instanceIDs = C_UnitAuras.GetUnitAuraInstanceIDs("target", filterStr)
+				local count = instanceIDs and #instanceIDs or 0
+				DL("SecretTest", label .. " auras: " .. count .. " found (filter=" .. filterStr .. ")")
+
+				if not instanceIDs or count == 0 then return end
+
+				for i, auraInstanceID in ipairs(instanceIDs) do
+					local idSecret = hasIssecretvalue and issecretvalue(auraInstanceID)
+					DL("SecretTest", "  [" .. i .. "] auraInstanceID=" .. (idSecret and "<SECRET>" or tostring(auraInstanceID)) .. " (secret=" .. tostring(idSecret) .. ")")
+
+					-- Call the API under test
+					local auraData = C_UnitAuras.GetAuraDataByAuraInstanceID("target", auraInstanceID)
+					if auraData then
+						-- Check if the whole table is accessible
+						local tableAccessible = true
+						if canaccesstable then
+							tableAccessible = canaccesstable(auraData)
+							DL("SecretTest", "    [table accessible: " .. tostring(tableAccessible) .. "]")
+						end
+
+						for _, fieldName in ipairs(fieldsToCheck) do
+							local fieldVal = auraData[fieldName]
+							if fieldVal ~= nil then
+								DL("SecretTest", CheckField(fieldName, fieldVal))
+							end
+						end
+					else
+						DL("SecretTest", "    GetAuraDataByAuraInstanceID returned nil!")
+					end
+				end
+				DL("SecretTest", "")
+			end
+
+			ProcessFilter("HARMFUL", "HARMFUL")
+			ProcessFilter("HELPFUL", "HELPFUL")
+
+			DL("SecretTest", "=== END SECRET VALUE TEST ===")
+		end)
+
+		if not ok then
+			DL("SecretTest", "PCALL ERROR: " .. tostring(err))
+			DL("SecretTest", "=== END SECRET VALUE TEST (error) ===")
+		end
+
+		-- Auto-show the debug window, scrolled to bottom
+		NeatPlatesUtility.Debug.Show()
+		print(orange.."NeatPlates: "..white.."Secret test complete. Results in debug window.")
+
 	elseif arg == "show" then
 		-- Show the debug window
 		if NeatPlatesUtility and NeatPlatesUtility.Debug then
@@ -1423,6 +1551,7 @@ SlashCmdList['NeatPlatesDebug'] = function(arg)
 		print(white.."  /npdebug blizzardplate"..yellow.." - Toggle blizzard plate for target")
 		print(white.."  /npdebug raidicon"..yellow.." - Toggle raid icon debug (shows window)")
 		print(white.."  /npdebug auras"..yellow.." - Toggle aura/debuff debug (shows window)")
+		print(white.."  /npdebug secrettest"..yellow.." - One-shot: check target auras for secret values")
 		print(white.."  /npdebug show"..yellow.." - Show the debug window")
 		print(white.."  /npdebug hide"..yellow.." - Hide the debug window")
 		print(white.."  /npdebug clear"..yellow.." - Clear the debug log")

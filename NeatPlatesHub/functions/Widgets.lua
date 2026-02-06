@@ -445,6 +445,10 @@ local AURA_TYPE_COLORS = {
 
 
 local function GetPrefixPriority(aura, auraType)
+	-- In WoW 12.0+, aura data (name, spellId) is secret during combat, making custom
+	-- aura list matching non-functional. Skip all custom list processing.
+	if isWoW12Plus then return nil, nil end
+
 	if not auraType then auraType = "normal" end
 
 	local filter, priority
@@ -465,7 +469,9 @@ local function GetPrefixPriority(aura, auraType)
 			-- Skip comparisons if values are secret
 			local nameMatch = not nameIsSecret and a.name == name
 			local spellMatch = not spellIdIsSecret and a.name == spellid
-			if (nameMatch or spellMatch) and auraType == a.type then
+			local typeMatch = auraType == a.type
+
+			if (nameMatch or spellMatch) and typeMatch then
 				return a.filter, i
 			end
 		end
@@ -540,17 +546,6 @@ local function SmartFilterMode(aura)
 	local ShowThisAura = false
 	local AuraPriority = 20
 
-	-- Debug: Log filter state
-	local debugEnabled = NEATPLATES_DEBUG_AURAS and NeatPlatesUtility and NeatPlatesUtility.Debug
-	local safeName = aura.name
-	if debugEnabled then
-		if issecretvalue and issecretvalue(safeName) then safeName = "[SECRET]" end
-		NeatPlatesUtility.Debug.Log("Filter", "SmartFilterMode for: " .. tostring(safeName))
-		NeatPlatesUtility.Debug.Log("Filter", "  effect: " .. tostring(aura.effect))
-		NeatPlatesUtility.Debug.Log("Filter", "  WidgetBuffFilter: " .. tostring(LocalVars.WidgetBuffFilter))
-		NeatPlatesUtility.Debug.Log("Filter", "  WidgetDebuffFilter: " .. tostring(LocalVars.WidgetDebuffFilter))
-	end
-
 	-- FILTER MODE HANDLING:
 	-- Filter mode 1 = "Show None" - don't show anything from this filter path
 	-- Filter mode 2 = "Show Mine" - API uses |PLAYER filter, so all returned auras are player's
@@ -563,26 +558,15 @@ local function SmartFilterMode(aura)
 	-- Show buffs: mode 2 (Show Mine - API pre-filtered) or mode 3 (Show All)
 	if aura.effect == "HELPFUL" and (LocalVars.WidgetBuffFilter == 2 or LocalVars.WidgetBuffFilter == 3) then
 		ShowThisAura = true
-		if debugEnabled then
-			local filterName = LocalVars.WidgetBuffFilter == 2 and "Show Mine (API filtered)" or "Show All"
-			NeatPlatesUtility.Debug.Log("Filter", "  PASS: Buff filter (" .. filterName .. ")")
-		end
 	end
 
 	-- Show debuffs: mode 2 (Show Mine - API pre-filtered) or mode 3 (Show All)
 	if aura.effect == "HARMFUL" and (LocalVars.WidgetDebuffFilter == 2 or LocalVars.WidgetDebuffFilter == 3) then
 		ShowThisAura = true
-		if debugEnabled then
-			local filterName = LocalVars.WidgetDebuffFilter == 2 and "Show Mine (API filtered)" or "Show All"
-			NeatPlatesUtility.Debug.Log("Filter", "  PASS: Debuff filter (" .. filterName .. ")")
-		end
 	end
 
 	-- Evaluate for further filtering via custom aura lists
 	local prefix, priority = GetPrefixPriority(aura)
-	if debugEnabled then
-		NeatPlatesUtility.Debug.Log("Filter", "  prefix from list: " .. tostring(prefix) .. ", priority: " .. tostring(priority))
-	end
 
 	-- If the aura is mentioned in the list, evaluate the instruction...
 	if prefix then
@@ -591,29 +575,17 @@ local function SmartFilterMode(aura)
 		-- For WoW 12.0+ with "my" prefix in custom lists, treat as "all" since ownership is unknowable
 		if isWoW12Plus and prefix == "my" then
 			show = true
-			if debugEnabled then
-				NeatPlatesUtility.Debug.Log("Filter", "  (12.0+) 'my' prefix treated as 'all'")
-			end
 		else
 			show = DebuffPrefixModes[prefix](aura)
 		end
 
 		if show then
-			if debugEnabled then
-				NeatPlatesUtility.Debug.Log("Filter", "  FINAL: PASS (from aura list)")
-			end
 			return true, (priority or 20)
 		else
-			if debugEnabled then
-				NeatPlatesUtility.Debug.Log("Filter", "  FINAL: BLOCKED by aura list prefix")
-			end
 			return false
 		end
 	-- When no prefix is mentioned, return the aura filter result
 	else
-		if debugEnabled then
-			NeatPlatesUtility.Debug.Log("Filter", "  FINAL: " .. (ShowThisAura and "PASS" or "BLOCKED") .. " (SmartFilter result)")
-		end
 		return ShowThisAura, 20
 	end
 
@@ -651,15 +623,6 @@ local function TrackDispelType(dispelType)
 end
 
 local function DebuffFilter(aura)
-	-- Debug: Log entry
-	local debugEnabled = NEATPLATES_DEBUG_AURAS and NeatPlatesUtility and NeatPlatesUtility.Debug
-	if debugEnabled then
-		local safeName = aura.name
-		if issecretvalue and issecretvalue(safeName) then safeName = "[SECRET]" end
-		NeatPlatesUtility.Debug.Log("Filter", "========================================")
-		NeatPlatesUtility.Debug.Log("Filter", "DebuffFilter called for: " .. tostring(safeName))
-	end
-
 	-- Get aura type safely (may be secret value in 12.0.0+)
 	local auraType = aura.type
 	local auraTypeIsSecret = issecretvalue and issecretvalue(auraType)
@@ -667,38 +630,22 @@ local function DebuffFilter(aura)
 	-- Purgeable Buff
 	if LocalVars.WidgetBuffPurgeable and aura.effect == "HELPFUL" and (not auraTypeIsSecret and auraType == "Magic") and aura.reaction == 1 then
 		local color = LocalVars.ColorBuffPurgeable
-		if debugEnabled then
-			NeatPlatesUtility.Debug.Log("Filter", "  PASS: Purgeable buff")
-		end
 		return true, 10, color.r, color.g, color.b, color.a
 	end
 	-- Sootheable Enrage Buff
 	if LocalVars.WidgetBuffEnrage and aura.effect == "HELPFUL" and (not auraTypeIsSecret and auraType == "") and aura.reaction == 1 then
 		local color = LocalVars.ColorBuffEnrage
-		if debugEnabled then
-			NeatPlatesUtility.Debug.Log("Filter", "  PASS: Sootheable enrage")
-		end
 		return true, 10, color.r, color.g, color.b, color.a
 	end
 	-- Dispellable Debuff
 	if (LocalVars.WidgetAuraTrackDispelFriendly and aura.reaction == AURA_TARGET_FRIENDLY) then
 		if (aura.effect == "HARMFUL" and TrackDispelType(auraType)) then
 			local r, g, b = GetAuraColor(aura)
-			if debugEnabled then
-				NeatPlatesUtility.Debug.Log("Filter", "  PASS: Dispellable debuff")
-			end
 			return true, 10, r, g, b, a
 		end
 	end
 
-	if debugEnabled then
-		NeatPlatesUtility.Debug.Log("Filter", "  Calling SmartFilterMode...")
-	end
-	local result, priority, r, g, b, a = SmartFilterMode(aura)
-	if debugEnabled then
-		NeatPlatesUtility.Debug.Log("Filter", "  DebuffFilter FINAL RESULT: " .. tostring(result) .. ", priority=" .. tostring(priority))
-	end
-	return result, priority, r, g, b, a
+	return SmartFilterMode(aura)
 end
 
 local function EmphasizedFilter(aura)
