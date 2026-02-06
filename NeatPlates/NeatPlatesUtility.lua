@@ -690,12 +690,90 @@ local function CreateDescriptionFrame(self, reference, parent, title, text)
 	return descframe
 end
 --]]
+
+-- Helper function to add tooltip support to a label FontString
+-- The label will show the tooltip from its parent widget when hovered
+local function AddTooltipToLabel(label, widget)
+	if not label then return end
+	-- Create an invisible button that overlays the label to capture mouse events
+	local hitFrame = CreateFrame("Button", nil, label:GetParent())
+	hitFrame:SetAllPoints(label)
+	hitFrame:SetFrameLevel(widget:GetFrameLevel() + 1)
+	hitFrame.widget = widget
+
+	hitFrame:SetScript("OnEnter", function(self)
+		local w = self.widget
+		w.isMouseover = true
+		if w.tooltipText ~= nil then
+			C_Timer.After(0.25, function()
+				if w.isMouseover then
+					GameTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+					GameTooltip:ClearAllPoints()
+					GameTooltip:SetText(w.tooltipText, nil, nil, nil, nil, true)
+					GameTooltip:SetPoint("BOTTOMLEFT", w, "TOPRIGHT", -12, -12)
+					GameTooltip:Show()
+				end
+			end)
+		end
+	end)
+
+	hitFrame:SetScript("OnLeave", function(self)
+		local w = self.widget
+		w.isMouseover = false
+		if w.tooltipText ~= nil then
+			GameTooltip:Hide()
+		end
+	end)
+
+	-- Pass through clicks to the widget if it's a button
+	hitFrame:SetScript("OnClick", function(self)
+		local w = self.widget
+		if w.Click then
+			w:Click()
+		elseif w:GetObjectType() == "CheckButton" then
+			w:Click()
+		end
+	end)
+
+	return hitFrame
+end
+
+-- Helper function to add tooltip support directly to a widget (for sliders, dropdowns, etc.)
+local function AddTooltipToWidget(widget)
+	widget:EnableMouse(true)
+
+	widget:HookScript("OnEnter", function(self)
+		self.isMouseover = true
+		if self.tooltipText ~= nil then
+			C_Timer.After(0.25, function()
+				if self.isMouseover then
+					GameTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+					GameTooltip:ClearAllPoints()
+					GameTooltip:SetText(self.tooltipText, nil, nil, nil, nil, true)
+					GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPRIGHT", -12, -12)
+					GameTooltip:Show()
+				end
+			end)
+		end
+	end)
+
+	widget:HookScript("OnLeave", function(self)
+		self.isMouseover = false
+		if self.tooltipText ~= nil then
+			GameTooltip:Hide()
+		end
+	end)
+end
+
 local function CreateCheckButton(self, reference, parent, label)
 	local checkbutton = CreateFrame( "CheckButton", reference, parent, "NeatPlatesCheckButtonTemplate" )
 	checkbutton.Label = _G[reference.."Text"]
 	checkbutton.Label:SetText(label)
 	checkbutton.GetValue = function() if checkbutton:GetChecked() then return true else return false end end
 	checkbutton.SetValue = checkbutton.SetChecked
+
+	-- Add tooltip support to the label text
+	AddTooltipToLabel(checkbutton.Label, checkbutton)
 
 	return checkbutton
 end
@@ -884,6 +962,12 @@ local function CreateSliderFrame(self, reference, parent, label, val, minval, ma
 		if parent.OnValueChanged then parent.OnValueChanged(slider) end
 		if slider.OnValueChanged then slider.OnValueChanged(slider) end
 	end
+
+	-- Add tooltip support to the slider itself
+	AddTooltipToWidget(slider)
+
+	-- Add tooltip support to the label text
+	AddTooltipToLabel(slider.Label, slider)
 
 	--slider.tooltipText = "Slider"
 	return slider
@@ -1116,6 +1200,14 @@ local function CreateDropdownFrame(helpertable, reference, parent, menu, default
 	-- Set the default value on itself
 	drawer:SetValue(default)
 
+	-- Add tooltip support to the dropdown frame itself
+	AddTooltipToWidget(drawer)
+
+	-- Add tooltip support to the label text if it exists
+	if drawer.Label then
+		AddTooltipToLabel(drawer.Label, drawer)
+	end
+
 	return drawer
 end
 
@@ -1244,6 +1336,10 @@ do
 		colorbox.SetValue = function(self, color)
 			colorbox:SetBackdropColor(color.r, color.g, color.b, color.a);
 		end
+
+		-- Add tooltip support to the label text
+		AddTooltipToLabel(colorbox.Label, colorbox)
+
 		--colorbox.tooltipText = "Colorbox"
 		return colorbox
 	end

@@ -188,6 +188,7 @@
                             GameTooltip:ClearAllPoints();
                             GameTooltip:SetText(self.tooltipText, nil, nil, nil, nil, true);
                             GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPRIGHT", -12, -12);
+                            GameTooltip:Show();
                         end
                     end);
                 end
@@ -212,6 +213,7 @@
                             GameTooltip:ClearAllPoints();
                             GameTooltip:SetText(self.tooltipText, nil, nil, nil, nil, true);
                             GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPRIGHT", -12, -12);
+                            GameTooltip:Show();
                         end
                     end);
                 end
@@ -240,6 +242,7 @@
                             GameTooltip:ClearAllPoints();
                             GameTooltip:SetText(self.tooltipText, nil, nil, nil, nil, true);
                             GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPRIGHT", -12, -12);
+                            GameTooltip:Show();
                         end
                     end);
                 end
