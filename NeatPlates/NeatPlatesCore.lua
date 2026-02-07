@@ -417,8 +417,9 @@ local function UpdateNameplateSize(plate, show, cWidth, cHeight)
 	if not plate then return end
 
 	C_Timer.NewTimer(0.1, function()
-		local scaleStandard = activetheme.SetScale()
+		local scaleStandard = (activetheme.SetScale and activetheme.SetScale()) or 1
 		local clickableWidth, clickableHeight = NeatPlatesPanel.GetClickableArea()
+		if not (activetheme.Default and activetheme.Default.hitbox) then return end
 		local hitbox = {
 			width = activetheme.Default.hitbox.width * (cWidth or clickableWidth),
 			height = activetheme.Default.hitbox.height * (cHeight or clickableHeight),
@@ -1406,7 +1407,7 @@ do
 
 	-- UpdateIndicator_Name:
 	function UpdateIndicator_Name()
-		local unitname = activetheme.SetUnitName(unit)
+		local unitname = (activetheme.SetUnitName and activetheme.SetUnitName(unit)) or unit.name or ""
 
 		if unit.showName then
 				visual.name:SetText(unitname) -- Set name
@@ -2662,7 +2663,7 @@ do
 	-- UpdateStyle:
 	function UpdateStyle()
 		local index, unitSubtext, unitPlateStyle
-		local useYOffset = (style.subtext.show and style.subtext.enabled and activetheme.SetSubText(unit) and NeatPlatesHubFunctions.SetStyleNamed(unit) == "Default")
+		local useYOffset = (style.subtext.show and style.subtext.enabled and activetheme.SetSubText and activetheme.SetSubText(unit) and NeatPlatesHubFunctions and NeatPlatesHubFunctions.SetStyleNamed and NeatPlatesHubFunctions.SetStyleNamed(unit) == "Default")
 		if useYOffset and extended.widgets["AuraWidgetHub"] then extended.widgets["AuraWidgetHub"]:UpdateOffset(0, style.subtext.yOffset) end 	-- Update AuraWidget position if 'subtext' is displayed
 
 		-- Frame
