@@ -63,6 +63,48 @@ end
 -- captures these locals in its closure, not nonexistent globals
 local WidgetDebuffFilterMode = 3  -- Default to Show All
 local WidgetBuffFilterMode = 1    -- Default to Show None
+local ShowImportantAurasOnly = true  -- Default to enabled (must also be before the function)
+
+-- Helper: Build a whitelist of auraInstanceIDs that Blizzard's default nameplates consider
+-- "important" by reading from Blizzard's own AurasFrame layout children.
+-- This requires UNIT_AURA to still be registered on the UnitFrame (done in NeatPlatesCore.lua)
+-- so Blizzard's AurasFrame continues to process and filter auras internally.
+-- Returns a set table { [auraInstanceID] = true, ... } or nil if unavailable.
+local function GetBlizzardImportantAuras(unit)
+	local nameplate = C_NamePlate and C_NamePlate.GetNamePlateForUnit(unit)
+	if not nameplate or not nameplate.UnitFrame then return nil end
+
+	local aurasFrame = nameplate.UnitFrame.AurasFrame
+	if not aurasFrame then return nil end
+
+	local important = {}
+	local found = false
+
+	-- Read from each of Blizzard's list frames (debuffs, buffs, crowd control)
+	-- These frames are populated by Blizzard's NamePlateAurasMixin:RefreshList()
+	-- which runs when UNIT_AURA fires and processes auras through AddAura()
+	local listFrames = {
+		aurasFrame.DebuffListFrame,
+		aurasFrame.BuffListFrame,
+		aurasFrame.CrowdControlListFrame,
+	}
+
+	for _, listFrame in ipairs(listFrames) do
+		if listFrame and listFrame.GetLayoutChildren then
+			local success, children = pcall(listFrame.GetLayoutChildren, listFrame)
+			if success and children then
+				for _, child in ipairs(children) do
+					if child.auraInstanceID then
+						important[child.auraInstanceID] = true
+						found = true
+					end
+				end
+			end
+		end
+	end
+
+	return found and important or nil
+end
 
 -- 12.0.0+: Use C_UnitAuras.GetUnitAuras() which returns full aura data tables
 -- The data fields may be secret values, but we handle that when displaying
@@ -89,6 +131,22 @@ if C_UnitAuras and C_UnitAuras.GetUnitAuras then
 		local debuffPlayerFilter = (WidgetDebuffFilterMode == 2) and "|PLAYER" or ""
 		local buffPlayerFilter = (WidgetBuffFilterMode == 2) and "|PLAYER" or ""
 
+		-- When "Show Important Auras Only" is enabled, read Blizzard's whitelist of
+		-- important auras. This is the same approach Platynator uses: read the auraInstanceIDs
+		-- from Blizzard's own AurasFrame layout children, which have already been filtered
+		-- through Blizzard's AddAura() and RefreshList() logic.
+		local blizzardWhitelist = nil
+		if ShowImportantAurasOnly then
+			blizzardWhitelist = GetBlizzardImportantAuras(unit)
+			if NEATPLATES_DEBUG_AURAS and NeatPlatesUtility and NeatPlatesUtility.Debug then
+				local count = 0
+				if blizzardWhitelist then
+					for _ in pairs(blizzardWhitelist) do count = count + 1 end
+				end
+				NeatPlatesUtility.Debug.Log("Aura", "  Blizzard whitelist: " .. (blizzardWhitelist and (count .. " auras") or "unavailable"))
+			end
+		end
+
 		-- First, get nameplate-specific auras (always include these for proper nameplate display)
 		-- For nameplate auras, also apply the |PLAYER filter when "Show Mine" is active
 		local debuffNPFilter = "HARMFUL|INCLUDE_NAME_PLATE_ONLY" .. debuffPlayerFilter
@@ -105,19 +163,25 @@ if C_UnitAuras and C_UnitAuras.GetUnitAuras then
 
 		for _, auraData in ipairs(debuffsNP) do
 			if not seenIds[auraData.auraInstanceID] then
-				seenIds[auraData.auraInstanceID] = true
-				auraData.isHarmful = true
-				auraData.isHelpful = false
-				table.insert(auras, auraData)
+				-- When using the Blizzard whitelist, only include auras that Blizzard shows
+				if not blizzardWhitelist or blizzardWhitelist[auraData.auraInstanceID] then
+					seenIds[auraData.auraInstanceID] = true
+					auraData.isHarmful = true
+					auraData.isHelpful = false
+					table.insert(auras, auraData)
+				end
 			end
 		end
 
 		for _, auraData in ipairs(buffsNP) do
 			if not seenIds[auraData.auraInstanceID] then
-				seenIds[auraData.auraInstanceID] = true
-				auraData.isHarmful = false
-				auraData.isHelpful = true
-				table.insert(auras, auraData)
+				-- When using the Blizzard whitelist, only include auras that Blizzard shows
+				if not blizzardWhitelist or blizzardWhitelist[auraData.auraInstanceID] then
+					seenIds[auraData.auraInstanceID] = true
+					auraData.isHarmful = false
+					auraData.isHelpful = true
+					table.insert(auras, auraData)
+				end
 			end
 		end
 
@@ -268,7 +332,8 @@ local HideCooldownSpiral = false
 local HideAuraDuration = false
 local HideAuraStacks = false
 local ShowAuraTooltip = true
-local ShowImportantAurasOnly = true
+-- Note: ShowImportantAurasOnly is declared earlier in the file (line 66)
+-- so it's properly captured by _GetUnitAurasForNameplate's closure
 
 -- Get a clean version of the function...  Avoid OmniCC interference
 -- local CooldownNative = CreateFrame("Cooldown", nil, WorldFrame)

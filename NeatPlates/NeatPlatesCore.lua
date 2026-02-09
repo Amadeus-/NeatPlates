@@ -2354,6 +2354,11 @@ do
 						plate.UnitFrame:SetAlpha(0)
 						-- Disable all events on the UnitFrame so it doesn't process updates
 						plate.UnitFrame:UnregisterAllEvents()
+						-- Re-register UNIT_AURA so Blizzard's AurasFrame continues to process
+						-- aura data. This is needed for "Show Important Auras Only" which reads
+						-- from Blizzard's filtered aura lists to determine which auras are important.
+						-- The AurasFrame itself is invisible (alpha 0) so no visual overhead.
+						plate.UnitFrame:RegisterUnitEvent("UNIT_AURA", unitid)
 					else
 						-- Pre-12.0: Hide the entire UnitFrame (click targeting worked differently)
 						plate.UnitFrame:Hide()
