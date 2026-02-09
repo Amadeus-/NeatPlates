@@ -69,7 +69,12 @@ local ShowImportantAurasOnly = true  -- Default to enabled (must also be before 
 -- "important" by reading from Blizzard's own AurasFrame layout children.
 -- This requires UNIT_AURA to still be registered on the UnitFrame (done in NeatPlatesCore.lua)
 -- so Blizzard's AurasFrame continues to process and filter auras internally.
--- Returns a set table { [auraInstanceID] = true, ... } or nil if unavailable.
+--
+-- Returns:
+--   table (possibly empty) - the set of important auraInstanceIDs { [id] = true, ... }
+--     An EMPTY table means "Blizzard shows zero important auras" -> filter out everything
+--   nil - AurasFrame infrastructure not available (no nameplate, no UnitFrame, no AurasFrame)
+--     nil means we cannot determine importance -> caller should fall back gracefully
 local function GetBlizzardImportantAuras(unit)
 	local nameplate = C_NamePlate and C_NamePlate.GetNamePlateForUnit(unit)
 	if not nameplate or not nameplate.UnitFrame then return nil end
@@ -78,7 +83,6 @@ local function GetBlizzardImportantAuras(unit)
 	if not aurasFrame then return nil end
 
 	local important = {}
-	local found = false
 
 	-- Read from each of Blizzard's list frames (debuffs, buffs, crowd control)
 	-- These frames are populated by Blizzard's NamePlateAurasMixin:RefreshList()
@@ -96,14 +100,19 @@ local function GetBlizzardImportantAuras(unit)
 				for _, child in ipairs(children) do
 					if child.auraInstanceID then
 						important[child.auraInstanceID] = true
-						found = true
 					end
 				end
 			end
 		end
 	end
 
-	return found and important or nil
+	-- Always return the table, even if empty. An empty table means Blizzard has
+	-- zero important auras to show, which is a valid state (e.g., all important
+	-- debuffs expired). The caller must distinguish between:
+	--   nil     = infrastructure unavailable, cannot determine importance
+	--   {}      = Blizzard says nothing is important, show nothing
+	--   {ids..} = only show these specific auras
+	return important
 end
 
 -- 12.0.0+: Use C_UnitAuras.GetUnitAuras() which returns full aura data tables
