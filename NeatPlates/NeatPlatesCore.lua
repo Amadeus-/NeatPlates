@@ -2307,8 +2307,62 @@ do
 	-- Game Events
 	----------------------------------------
 	local builtThisSession = false
+
+	-- Force Blizzard's aura display CVars to "all on" so that the AurasFrame list frames
+	-- (DebuffListFrame, BuffListFrame, CrowdControlListFrame) remain shown and populated.
+	-- This is needed for "Show Important Auras Only" which reads the layout children from
+	-- those list frames to determine which auras Blizzard considers important.
+	-- Since NeatPlates hides Blizzard's UnitFrame (alpha 0), these CVars have no visible effect.
+	local forcingAuraCVars = false  -- Guard to prevent re-entrancy in CVar callback loop
+	local function ForceAuraDisplayCVars()
+		if not isMidnight then return end
+		if not NamePlateConstants then return end
+		if forcingAuraCVars then return end
+
+		forcingAuraCVars = true
+
+		-- Enemy NPC aura display: enable all categories
+		if NamePlateConstants.ENEMY_NPC_AURA_DISPLAY_CVAR and Enum.NamePlateEnemyNpcAuraDisplay then
+			C_CVar.SetCVarBitfield(NamePlateConstants.ENEMY_NPC_AURA_DISPLAY_CVAR, Enum.NamePlateEnemyNpcAuraDisplay.Buffs, true)
+			C_CVar.SetCVarBitfield(NamePlateConstants.ENEMY_NPC_AURA_DISPLAY_CVAR, Enum.NamePlateEnemyNpcAuraDisplay.Debuffs, true)
+			C_CVar.SetCVarBitfield(NamePlateConstants.ENEMY_NPC_AURA_DISPLAY_CVAR, Enum.NamePlateEnemyNpcAuraDisplay.CrowdControl, true)
+		end
+
+		-- Enemy player aura display: enable all categories
+		if NamePlateConstants.ENEMY_PLAYER_AURA_DISPLAY_CVAR and Enum.NamePlateEnemyPlayerAuraDisplay then
+			C_CVar.SetCVarBitfield(NamePlateConstants.ENEMY_PLAYER_AURA_DISPLAY_CVAR, Enum.NamePlateEnemyPlayerAuraDisplay.Buffs, true)
+			C_CVar.SetCVarBitfield(NamePlateConstants.ENEMY_PLAYER_AURA_DISPLAY_CVAR, Enum.NamePlateEnemyPlayerAuraDisplay.Debuffs, true)
+			C_CVar.SetCVarBitfield(NamePlateConstants.ENEMY_PLAYER_AURA_DISPLAY_CVAR, Enum.NamePlateEnemyPlayerAuraDisplay.LossOfControl, true)
+		end
+
+		forcingAuraCVars = false
+	end
+
+	-- Register CVar callbacks to re-force the aura display CVars if the user changes them
+	-- mid-session (e.g., via Interface > Nameplates settings panel). Without this, changing
+	-- Blizzard's aura display settings would cause SetShown(false) on list frames, which
+	-- would stop Blizzard from populating layout children, breaking our whitelist.
+	if isMidnight and CVarCallbackRegistry and NamePlateConstants then
+		local function OnAuraCVarChanged()
+			-- ForceAuraDisplayCVars has its own re-entrancy guard (forcingAuraCVars)
+			-- so callbacks triggered by our own SetCVarBitfield calls are ignored
+			ForceAuraDisplayCVars()
+		end
+
+		if NamePlateConstants.ENEMY_NPC_AURA_DISPLAY_CVAR then
+			CVarCallbackRegistry:RegisterCallback(NamePlateConstants.ENEMY_NPC_AURA_DISPLAY_CVAR, OnAuraCVarChanged, "NeatPlates_AuraCVar_NPC")
+		end
+		if NamePlateConstants.ENEMY_PLAYER_AURA_DISPLAY_CVAR then
+			CVarCallbackRegistry:RegisterCallback(NamePlateConstants.ENEMY_PLAYER_AURA_DISPLAY_CVAR, OnAuraCVarChanged, "NeatPlates_AuraCVar_Player")
+		end
+	end
+
 	function CoreEvents:PLAYER_ENTERING_WORLD()
 		NeatPlatesCore:SetScript("OnUpdate", OnUpdate);
+
+		-- Force aura display CVars on each world entry (login, reload, zone transitions)
+		-- This ensures Blizzard's AurasFrame list frames are always shown and populated.
+		ForceAuraDisplayCVars()
 
 		if NEATPLATES_IS_CLASSIC_ERA and not builtThisSession then
 			NeatPlates.BuildDefaultSpellDB() -- Temporarily force a rebuild on login as this is a work in progress
