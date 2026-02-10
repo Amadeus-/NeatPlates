@@ -446,7 +446,8 @@ local function GetUnitQuestInfo(unit)
 			-- Event Objective detection
 			if i > 1 and lineType == 0 then
 				local color = line.leftColor
-				if color.r > 0.99 and color.g >= 0.81 and color.b == 0 then -- QuestYellow
+				local isSecret = issecretvalue and (issecretvalue(color.r) or issecretvalue(color.g) or issecretvalue(color.b))
+				if not isSecret and color.r > 0.99 and color.g >= 0.81 and color.b == 0 then -- QuestYellow
 					local text = line.leftText
 					if lastObjectiveTitle ~= nil and inGroup and UnitGUID(text) then
 						lastObjectivePlayer = text
