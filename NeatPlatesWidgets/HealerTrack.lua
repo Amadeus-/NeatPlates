@@ -26,6 +26,10 @@ local RoleList = {}
 local function IsHealer(name)
 
 	if name then
+		-- 12.0.0+: UnitName() can return secret values during combat;
+		-- using a secret as a table index causes "table index is secret" error
+		if issecretvalue and issecretvalue(name) then return false end
+
 		local Role = RoleList[name]
 		if Role == nil then
 			RequestBattlefieldScoreData()
@@ -213,12 +217,17 @@ local function UpdateRolesViaScoreboard()
 			local name, _, _, _, _, faction, _, class, _, _, _, _, _, _, _, talentSpec = GetBattlefieldScore(i)
 			--print(name, class, talentSpec)
 			if name and class and ClassRoles[class] and talentSpec then
-				local Role = ClassRoles[class][talentSpec]
+				-- 12.0.0+: name from GetBattlefieldScore() could be a secret value
+				if issecretvalue and issecretvalue(name) then
+					-- skip this entry; cannot use secret as table index
+				else
+					local Role = ClassRoles[class][talentSpec]
 
-				if RoleList[name] ~= Role then
-					RoleList[name] = Role
-					--if Role == "Healer" then print(name, Role, faction) end
-					UpdateIsNeeded = true
+					if RoleList[name] ~= Role then
+						RoleList[name] = Role
+						--if Role == "Healer" then print(name, Role, faction) end
+						UpdateIsNeeded = true
+					end
 				end
 			end
 		end

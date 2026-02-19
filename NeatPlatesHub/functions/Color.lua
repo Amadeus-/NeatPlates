@@ -240,7 +240,8 @@ local function CustomColorDelegate(unit)
 			if not color and raidIconId and unit.isMarked and unit.raidIcon == raidIconTable[tonumber(raidIconId)] then
 				color = HexToRGB(LocalVars.CustomColorLookup[key].hex); break
 		-- Custom Color by Unit Name
-			elseif not color and key == unit.name then
+			-- 12.0.0+: unit.name can be a secret value during combat; skip table lookup if so
+			elseif not color and not (issecretvalue and issecretvalue(unit.name)) and key == unit.name then
 				color = HexToRGB(LocalVars.CustomColorLookup[unit.name].hex); break
 			elseif string.lower(LocalVars.CustomColorLookup[key].prefix) == "unit" then
 				-- Do nothing, and skip the other checks for this line/condition

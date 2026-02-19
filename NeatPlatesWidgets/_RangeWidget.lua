@@ -41,8 +41,12 @@ local function CheckRanges(self)
 	-- Cycle through Group
 	if groupType then
 		for index = 1, groupSize do
-			unitid = groupType..index	
-			Ranges[UnitName(unitid)] = GetRange(unitid)
+			unitid = groupType..index
+			local unitName = UnitName(unitid)
+			-- 12.0.0+: UnitName() can return secret values during combat
+			if unitName and not (issecretvalue and issecretvalue(unitName)) then
+				Ranges[unitName] = GetRange(unitid)
+			end
 		end
 	end
 	
@@ -82,8 +86,13 @@ local art = "Interface\\Addons\\NeatPlatesWidgets\\RangeWidget\\RangeWidget"
 local function UpdateRangeWidget(self, unit, range)
 		local unitrange, saferange
 		saferange = range or self.Range
-		if unit.reaction == "FRIENDLY" then --and unit.type == "PLAYER" then 
-			unitrange = Ranges[unit.name] or 100
+		if unit.reaction == "FRIENDLY" then --and unit.type == "PLAYER"
+			-- 12.0.0+: unit.name can be a secret value during combat
+			if not (issecretvalue and issecretvalue(unit.name)) then
+				unitrange = Ranges[unit.name] or 100
+			else
+				unitrange = 100
+			end
 			--self.String:SetText(range) 
 			if unitrange <= saferange then 
 				self.Texture:Show()
