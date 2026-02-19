@@ -170,7 +170,6 @@ L["Friendly Status Text"] = true
 	-- StatusText Dropdown
 	L["None"] = true
 	L["Percent Health"] = true
-	L["Percent Health (Colored)"] = true
 	L["Exact Health"] = true
 	L["Approximate Health"] = true
 		L["SHORT_ONE_HUNDRED_MILLION"] = "E"

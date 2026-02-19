@@ -19,8 +19,10 @@ end
 
 -- Safe division that handles secret values - returns percentage as 0-1
 local function SafeHealthPercent(unit)
-	-- In 12.0.0+, NeatPlatesCore stores unit.healthPercent using UnitHealthPercent()
-	-- which returns a non-secret value. Use this when available.
+	-- NeatPlatesCore stores unit.healthPercent as healthSafe/healthmaxSafe (both plain numbers).
+	-- Out of combat: accurate ratio from UnitHealth/UnitHealthMax.
+	-- In combat (12.0.0+): healthSafe falls to 0 (secret converted to 0), so healthPercent = 0.
+	-- The visual health BAR stays accurate via native StatusBar; this is for Lua decisions only.
 	if unit.healthPercent ~= nil then
 		return unit.healthPercent
 	end
@@ -42,7 +44,7 @@ end
 
 -- Safe comparison for health < healthmax (commonly used for "is damaged" checks)
 local function SafeIsDamaged(unit)
-	-- In 12.0.0+, use unit.healthPercent which is derived from UnitHealthPercent() (non-secret)
+	-- In 12.0.0+, use unit.healthPercent (last known non-secret value, set by NeatPlatesCore)
 	if unit.healthPercent ~= nil then
 		return unit.healthPercent < 1
 	end
@@ -61,7 +63,7 @@ end
 
 -- Safe health > 0 check
 local function SafeHasHealth(unit)
-	-- In 12.0.0+, use unit.healthPercent which is derived from UnitHealthPercent() (non-secret)
+	-- In 12.0.0+, use unit.healthPercent (last known non-secret value, set by NeatPlatesCore)
 	if unit.healthPercent ~= nil then
 		return unit.healthPercent > 0
 	end

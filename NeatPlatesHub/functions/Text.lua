@@ -228,28 +228,10 @@ local function TextHealthPercent(unit)
 	return GetHealthPercent(unit).."%"
 end
 
-local function TextHealthPercentColored(unit)
-	local color = ColorFunctionByHealth(unit)
-	-- 12.0.0+: Use SetFormattedText approach for secret values
-	local precision = LocalVars.TextHealthPercentPrecision or 0
-	local formatStr = "%." .. precision .. "f%%"
-	if SetHealthPercentFormat(unit, formatStr) then
-		return nil, color.r, color.g, color.b, .7  -- Signal to use format data
-	end
-	return GetHealthPercent(unit).."%", color.r, color.g, color.b, .7
-end
-
 local function HealthFunctionPercent(unit)
 	-- Use SafeIsDamaged for 12.0.0+ secret value handling
 	if SafeIsDamaged(unit) then
 		return TextHealthPercent(unit)
-	else return "" end
-end
-
-local function HealthFunctionPercentColored(unit)
-	-- Use SafeIsDamaged for 12.0.0+ secret value handling
-	if SafeIsDamaged(unit) then
-		return TextHealthPercentColored(unit)
 	else return "" end
 end
 
@@ -610,7 +592,6 @@ NeatPlatesHubDefaults.EnemyStatusTextMode = "HealthFunctionNone"
 
 AddHubFunction(HealthTextModeFunctions, NeatPlatesHubMenus.TextModes, HealthFunctionNone, L["None"], "HealthFunctionNone")
 AddHubFunction(HealthTextModeFunctions, NeatPlatesHubMenus.TextModes, HealthFunctionPercent, L["Percent Health"], "HealthFunctionPercent")
-AddHubFunction(HealthTextModeFunctions, NeatPlatesHubMenus.TextModes, HealthFunctionPercentColored, L["Percent Health (Colored)"], "HealthFunctionPercentColored")
 AddHubFunction(HealthTextModeFunctions, NeatPlatesHubMenus.TextModes, HealthFunctionExact, L["Exact Health"], "HealthFunctionExact")
 AddHubFunction(HealthTextModeFunctions, NeatPlatesHubMenus.TextModes, HealthFunctionApprox, L["Approximate Health"], "HealthFunctionApprox")
 AddHubFunction(HealthTextModeFunctions, NeatPlatesHubMenus.TextModes, HealthFunctionDeficit, L["Health Deficit"], "HealthFunctionDeficit")
@@ -794,7 +775,6 @@ NeatPlatesHubDefaults.HeadlineFriendlySubtext = "RoleGuildLevel"
 NeatPlatesHubDefaults.EnemySubtext = "None"
 NeatPlatesHubDefaults.FriendlySubtext = "None"
 AddHubFunction(EnemyNameSubtextFunctions, NeatPlatesHubMenus.EnemyNameSubtextModes, DummyFunction, L["None"], "None")
-AddHubFunction(EnemyNameSubtextFunctions, NeatPlatesHubMenus.EnemyNameSubtextModes, TextHealthPercentColored, L["Percent Health (Colored)"], "PercentHealthColored")
 AddHubFunction(EnemyNameSubtextFunctions, NeatPlatesHubMenus.EnemyNameSubtextModes, TextHealthPercent, L["Percent Health"], "PercentHealth")
 AddHubFunction(EnemyNameSubtextFunctions, NeatPlatesHubMenus.EnemyNameSubtextModes, TextRoleGuildLevel, L["NPC Role, Guild, or Level"], "RoleGuildLevel")
 AddHubFunction(EnemyNameSubtextFunctions, NeatPlatesHubMenus.EnemyNameSubtextModes, TextRoleGuildQuest, L["NPC Role, Guild, or Quest"], "RoleGuildQuest")

@@ -239,21 +239,27 @@ local function SetValuePercent_Native(self, pct)
 end
 
 -- SetValueFromUnit for native StatusBar
--- Uses UnitHealthPercent with CurveConstants.ScaleTo100 to get a usable percentage
+-- Passes UnitHealth/UnitHealthMax directly to the native StatusBar which handles secret values.
 local function SetValueFromUnit_Native(self, unitid)
-	if not unitid or not UnitHealthPercent then
+	if not unitid then
 		return false
 	end
 
-	if not CurveConstants or not CurveConstants.ScaleTo100 then
-		return false
-	end
-
-	local percent = UnitHealthPercent(unitid, true, CurveConstants.ScaleTo100)
-
-	if percent and type(percent) == "number" then
-		local frac = percent / 100
-		SetValuePercent_Native(self, frac)
+	local health = UnitHealth(unitid)
+	local maxHealth = UnitHealthMax(unitid)
+	if health and maxHealth then
+		self.NativeBar:SetMinMaxValues(0, maxHealth)
+		self.NativeBar:SetValue(health)
+		-- Store non-secret values for GetMinMaxValues compatibility
+		if not issecretvalue or not issecretvalue(maxHealth) then
+			if maxHealth > 0 then
+				self.MinVal = 0
+				self.MaxVal = maxHealth
+			end
+		end
+		if not issecretvalue or not issecretvalue(health) then
+			self.Value = health
+		end
 		return true
 	end
 
@@ -261,20 +267,27 @@ local function SetValueFromUnit_Native(self, unitid)
 end
 
 -- SetPowerFromUnit for native StatusBar
+-- Passes UnitPower/UnitPowerMax directly to the native StatusBar which handles secret values.
 local function SetPowerFromUnit_Native(self, unitid, powerType)
-	if not unitid or not UnitPowerPercent then
+	if not unitid then
 		return false
 	end
 
-	if not CurveConstants or not CurveConstants.ScaleTo100 then
-		return false
-	end
-
-	local percent = UnitPowerPercent(unitid, powerType, false, CurveConstants.ScaleTo100)
-
-	if percent and type(percent) == "number" then
-		local frac = percent / 100
-		SetValuePercent_Native(self, frac)
+	local power = UnitPower(unitid, powerType)
+	local maxPower = UnitPowerMax(unitid, powerType)
+	if power and maxPower then
+		self.NativeBar:SetMinMaxValues(0, maxPower)
+		self.NativeBar:SetValue(power)
+		-- Store non-secret values for GetMinMaxValues compatibility
+		if not issecretvalue or not issecretvalue(maxPower) then
+			if maxPower > 0 then
+				self.MinVal = 0
+				self.MaxVal = maxPower
+			end
+		end
+		if not issecretvalue or not issecretvalue(power) then
+			self.Value = power
+		end
 		return true
 	end
 

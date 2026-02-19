@@ -19,16 +19,6 @@ end
 -- Version check for 12.0.0+ (Midnight) API changes
 local isMidnight = select(4, GetBuildInfo()) >= 120000
 
--- Create our own ScaleTo100 curve for use with UnitHealthPercent/UnitPowerPercent
--- This is used when CurveConstants.ScaleTo100 might not be available yet
-local NeatPlatesScaleTo100Curve
-if isMidnight and C_CurveUtil and C_CurveUtil.CreateCurve and Enum and Enum.LuaCurveType then
-	NeatPlatesScaleTo100Curve = C_CurveUtil.CreateCurve()
-	NeatPlatesScaleTo100Curve:SetType(Enum.LuaCurveType.Linear)
-	NeatPlatesScaleTo100Curve:AddPoint(0.0, 0)
-	NeatPlatesScaleTo100Curve:AddPoint(1.0, 100)
-end
-
 -- Secret value helper for 12.0.0+ (health/power can be secret values in combat)
 -- Returns the numeric value if safe, or the fallback if it's a secret value
 local function SafeNumber(value, fallback)
@@ -1335,13 +1325,10 @@ do
 		if not (isMidnight and issecretvalue and issecretvalue(unit.healthmax)) and unit.healthmax == 0 then
 			unit.healthmax = 1
 		end
-		-- Store health percentage for comparisons and bar width calculations
-		-- In 12.0.0+, UnitHealthPercent returns a SECRET value that cannot be used in arithmetic.
-		-- The safe values (healthSafe/healthmaxSafe) are non-secret and can be used for comparisons.
+		-- Health percentage for Lua-side decisions (color, alpha, scale, text).
+		-- Falls back to 0 when health is secret in combat (12.0.0+).
+		-- The native StatusBar widget handles secret values directly for bar fill.
 		unit.healthPercent = unit.healthmaxSafe > 0 and (unit.healthSafe / unit.healthmaxSafe) or 1
-
-		-- 12.0.0+ health text display is handled via SetFormattedText in the display code
-		-- (NeatPlatesHub/functions/Text.lua sets unit.healthTextFormat/Value for SetFormattedText)
 
 		local powerType = UnitPowerType(unitid) or 0
 		unit.power = UnitPower(unitid, powerType) or 0
