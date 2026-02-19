@@ -1527,6 +1527,143 @@ SlashCmdList['NeatPlatesDebug'] = function(arg)
 		NeatPlatesUtility.Debug.Show()
 		print(orange.."NeatPlates: "..white.."Secret test complete. Results in debug window.")
 
+	elseif arg == "hitbox" then
+		if not (NeatPlatesUtility and NeatPlatesUtility.Debug) then
+			print(orange.."NeatPlates: "..red.."Debug system not available.")
+			return
+		end
+		local DL = NeatPlatesUtility.Debug.Log
+		NeatPlatesUtility.Debug.Clear()
+
+		-- Toggle visual overlay + mouse tracker mode
+		NEATPLATES_DEBUG_HITBOX = not NEATPLATES_DEBUG_HITBOX
+
+		-- Mouse tracker: logs what frame is under the cursor when it changes
+		if not NEATPLATES_DEBUG_HITBOX_TRACKER then
+			NEATPLATES_DEBUG_HITBOX_TRACKER = CreateFrame("Frame")
+		end
+		local tracker = NEATPLATES_DEBUG_HITBOX_TRACKER
+		if NEATPLATES_DEBUG_HITBOX then
+			tracker._lastFocus = nil
+			tracker:SetScript("OnUpdate", function(self)
+				local focus = GetMouseInteractionFocus and GetMouseInteractionFocus() or (GetMouseFoci and GetMouseFoci()[1]) or nil
+				if focus ~= self._lastFocus then
+					self._lastFocus = focus
+					if focus and NeatPlatesUtility and NeatPlatesUtility.Debug then
+						local name = focus:GetName() or "(unnamed)"
+						local ftype = focus:GetObjectType() or "?"
+						local w, h = focus:GetWidth(), focus:GetHeight()
+						local mouseEnabled = focus.IsMouseEnabled and focus:IsMouseEnabled() or false
+						local strata = focus.GetFrameStrata and focus:GetFrameStrata() or "?"
+						local level = focus.GetFrameLevel and focus:GetFrameLevel() or "?"
+						-- Try to get parent info
+						local parent = focus:GetParent()
+						local parentName = parent and (parent:GetName() or parent:GetObjectType()) or "none"
+						-- Check if this is a NeatPlates element
+						local isNP = ""
+						if focus.NativeBar then isNP = " [NP StatusBar wrapper]" end
+						if focus.GetStatusBarTexture then isNP = isNP .. " [StatusBar]" end
+						if focus.extended then isNP = " [NP plate]" end
+						if focus.carrier then isNP = " [NP carrier]" end
+
+						NeatPlatesUtility.Debug.Log("Mouse", name .. " | type=" .. ftype .. " | " .. string.format("%.0fx%.0f", w, h) .. " | mouse=" .. tostring(mouseEnabled) .. " | strata=" .. tostring(strata) .. "/" .. tostring(level) .. " | parent=" .. parentName .. isNP)
+					elseif not focus then
+						NeatPlatesUtility.Debug.Log("Mouse", "(WorldFrame / no focus)")
+					end
+				end
+			end)
+		else
+			tracker:SetScript("OnUpdate", nil)
+			tracker._lastFocus = nil
+		end
+
+		local plates = C_NamePlate.GetNamePlates()
+		if NEATPLATES_DEBUG_HITBOX then
+			DL("Hitbox", "=== HITBOX VISUAL DEBUG: ON ===")
+			DL("Hitbox", "Green overlay = plate base frame (C++ nameplate size)")
+			DL("Hitbox", "Red overlay = UnitFrame (should match plate)")
+			DL("Hitbox", "Blue overlay = NeatPlates carrier frame")
+			DL("Hitbox", "")
+
+			for _, plate in pairs(plates) do
+				-- Green overlay on plate base frame (what SetNamePlateSize controls)
+				if not plate._debugPlateOverlay then
+					plate._debugPlateOverlay = plate:CreateTexture(nil, "OVERLAY")
+					plate._debugPlateOverlay:SetColorTexture(0, 1, 0, 0.3)
+					plate._debugPlateOverlay:SetAllPoints(plate)
+				end
+				plate._debugPlateOverlay:Show()
+
+				-- Red overlay on UnitFrame
+				if plate.UnitFrame and not plate._debugUFOverlay then
+					plate._debugUFOverlay = plate.UnitFrame:CreateTexture(nil, "OVERLAY")
+					plate._debugUFOverlay:SetColorTexture(1, 0, 0, 0.2)
+					plate._debugUFOverlay:SetAllPoints(plate.UnitFrame)
+				end
+				if plate._debugUFOverlay then plate._debugUFOverlay:Show() end
+
+				-- Blue overlay on carrier
+				if plate.carrier and not plate._debugCarrierOverlay then
+					plate._debugCarrierOverlay = plate.carrier:CreateTexture(nil, "OVERLAY")
+					plate._debugCarrierOverlay:SetColorTexture(0, 0, 1, 0.2)
+					plate._debugCarrierOverlay:SetAllPoints(plate.carrier)
+				end
+				if plate._debugCarrierOverlay then plate._debugCarrierOverlay:Show() end
+
+				-- Report actual frame sizes
+				local pw, ph = plate:GetWidth(), plate:GetHeight()
+				local unitName = plate.UnitFrame and plate.UnitFrame.unit and UnitName(plate.UnitFrame.unit) or "unknown"
+				DL("Hitbox", "Plate [" .. tostring(unitName) .. "]:")
+				DL("Hitbox", "  plate frame: " .. string.format("%.1f x %.1f", pw, ph))
+				if plate.UnitFrame then
+					local uw, uh = plate.UnitFrame:GetWidth(), plate.UnitFrame:GetHeight()
+					DL("Hitbox", "  UnitFrame: " .. string.format("%.1f x %.1f", uw, uh))
+				end
+				if plate.carrier then
+					local cw, ch = plate.carrier:GetWidth(), plate.carrier:GetHeight()
+					DL("Hitbox", "  carrier: " .. string.format("%.1f x %.1f", cw, ch))
+				end
+				if plate.extended and plate.extended.visual and plate.extended.visual.hitbox then
+					local hw, hh = plate.extended.visual.hitbox:GetWidth(), plate.extended.visual.hitbox:GetHeight()
+					DL("Hitbox", "  NP visual hitbox: " .. string.format("%.1f x %.1f", hw, hh))
+				end
+				-- Try to measure Blizzard's internal health bar
+				if plate.UnitFrame and plate.UnitFrame.HealthBarsContainer then
+					local hbc = plate.UnitFrame.HealthBarsContainer
+					local hbcw, hbch = hbc:GetWidth(), hbc:GetHeight()
+					DL("Hitbox", "  HealthBarsContainer: " .. string.format("%.1f x %.1f", hbcw, hbch))
+					if hbc.healthBar then
+						local hbw, hbh = hbc.healthBar:GetWidth(), hbc.healthBar:GetHeight()
+						DL("Hitbox", "  Blizzard healthBar: " .. string.format("%.1f x %.1f", hbw, hbh))
+					end
+				end
+				-- Try to measure HitTestFrame
+				if plate.UnitFrame and plate.UnitFrame.HitTestFrame then
+					local htf = plate.UnitFrame.HitTestFrame
+					local ok, htw, hth = pcall(function() return htf:GetWidth(), htf:GetHeight() end)
+					if ok then
+						DL("Hitbox", "  HitTestFrame: " .. string.format("%.1f x %.1f", htw, hth))
+					else
+						DL("Hitbox", "  HitTestFrame: (forbidden - cannot read size)")
+					end
+				end
+				DL("Hitbox", "")
+			end
+
+			DL("Hitbox", "Run '/npdebug hitbox' again to toggle off.")
+			DL("Hitbox", "=== END HITBOX DEBUG ===")
+			NeatPlatesUtility.Debug.Show()
+			print(orange.."NeatPlates: "..green.."Hitbox debug overlays: ON"..white.." (green=plate, red=UnitFrame, blue=carrier)")
+		else
+			-- Hide overlays
+			for _, plate in pairs(plates) do
+				if plate._debugPlateOverlay then plate._debugPlateOverlay:Hide() end
+				if plate._debugUFOverlay then plate._debugUFOverlay:Hide() end
+				if plate._debugCarrierOverlay then plate._debugCarrierOverlay:Hide() end
+			end
+			print(orange.."NeatPlates: "..red.."Hitbox debug overlays: OFF")
+		end
+
 	elseif arg == "show" then
 		-- Show the debug window
 		if NeatPlatesUtility and NeatPlatesUtility.Debug then
@@ -1551,6 +1688,7 @@ SlashCmdList['NeatPlatesDebug'] = function(arg)
 		print(white.."  /npdebug blizzardplate"..yellow.." - Toggle blizzard plate for target")
 		print(white.."  /npdebug raidicon"..yellow.." - Toggle raid icon debug (shows window)")
 		print(white.."  /npdebug auras"..yellow.." - Toggle aura/debuff debug (shows window)")
+		print(white.."  /npdebug hitbox"..yellow.." - Show hitbox size calculation details")
 		print(white.."  /npdebug secrettest"..yellow.." - One-shot: check target auras for secret values")
 		print(white.."  /npdebug show"..yellow.." - Show the debug window")
 		print(white.."  /npdebug hide"..yellow.." - Hide the debug window")

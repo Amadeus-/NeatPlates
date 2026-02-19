@@ -427,6 +427,73 @@ local function UpdateNameplateSize(plate, show, cWidth, cHeight)
 			y = (activetheme.Default.hitbox.y*-1) * scaleStandard,
 		}
 
+		-- 12.0.0+ (Midnight): Ensure hitbox is wide/tall enough to cover core visual elements.
+		--
+		-- How Blizzard's click detection works (from Blizzard_NamePlateUnitFrame.lua):
+		--   1. C_NamePlate.SetNamePlateSize(W, H) sets the base nameplate frame size
+		--   2. UnitFrame fills the base frame via SetAllPoints (width = W)
+		--   3. CastBar is anchored BOTTOMLEFT/BOTTOMRIGHT with 12px inset from each side
+		--      -> castBar width = W - 24
+		--   4. HealthBarsContainer matches castBar width (BOTTOMLEFT/BOTTOMRIGHT + 0,2 offset)
+		--      -> HealthBarsContainer width = W - 24
+		--   5. healthBar fills HealthBarsContainer via TOPLEFT/BOTTOMRIGHT anchors
+		--      -> healthBar width = W - 24
+		--   6. HitTestFrame is anchored to healthBar with extraXOffset=10 on each side:
+		--      SetPoint("TOPLEFT", healthBar, -10, ...)
+		--      SetPoint("BOTTOMRIGHT", healthBar, 10, ...)
+		--      -> HitTestFrame width = (W - 24) + 20 = W - 4
+		--
+		-- Therefore: effective clickable width = W - 4, so W = desiredClickableWidth + 4
+		--
+		-- HOWEVER: At W = maxVisualWidth + 4, the HitTestFrame (W-4) exactly equals the
+		-- widest visual element. With zero margin, sub-pixel rounding and floating-point
+		-- precision cause the very edge pixels to be non-clickable. Blizzard's own
+		-- extraXOffset=10 is designed to give a 10px buffer past the Blizzard healthBar,
+		-- so we apply the same 10px margin past our widest visual element.
+		--
+		-- Formula: W = maxVisualWidth + 2*margin + 4  (margin = 10px per side)
+		--   For Quatre skin: healthborder=128px -> W = 128 + 20 + 4 = 152px
+		--   -> HitTestFrame = 148px, extending 10px past the 128px border on each side
+		--
+		-- IMPORTANT: SetNamePlateSize is GLOBAL (applies to ALL plates simultaneously).
+		-- The targeted plate's HitTestFrame gets click priority from Blizzard's C++ code,
+		-- so an oversized hitbox causes the target to steal clicks from adjacent plates.
+		-- EXCLUDE: text elements (name, subtext, spelltext) and target/focus/mouseover
+		-- indicators -- those extend well beyond the plate body and cause overlap.
+		if isMidnight and activetheme.Default then
+			local style = activetheme.Default
+			local coreBarElements = {
+				"healthbar", "frame", "healthborder",
+				"castbar", "castborder", "castnostop",
+				"extrabar", "powerbar", "threatborder",
+			}
+
+			local minX, maxX = 0, 0
+			for _, elemName in pairs(coreBarElements) do
+				local elem = style[elemName]
+				if elem and elem.width then
+					local w = elem.width
+					local ex = elem.x or 0
+					local halfW = w / 2
+					local leftEdge = ex - halfW
+					local rightEdge = ex + halfW
+					if leftEdge < minX then minX = leftEdge end
+					if rightEdge > maxX then maxX = rightEdge end
+				end
+			end
+
+			local maxVisualWidth = maxX - minX
+			-- Apply 10px margin per side (matching Blizzard's extraXOffset) so the
+			-- HitTestFrame extends past the visual edge for reliable edge clicking.
+			-- W = maxVisualWidth + 2*margin + 4, where margin = 10
+			local CLICK_MARGIN = 0
+			local minPlateWidth = maxVisualWidth + (2 * CLICK_MARGIN) + 4
+			hitbox.width = math.max(hitbox.width, minPlateWidth)
+			-- NOTE: Do NOT expand height. Border textures are very tall (64px) and
+			-- expanding the plate height shifts the carrier center, moving the
+			-- nameplate visuals to the wrong position above the NPC.
+		end
+
 		if not InCombatLockdown() then
 			if IsInInstance() or DisplayingBlizzardPlate(plate) then
 				-- Reset to blizzard nameplate default to avoid issues while diplaying default blizzard nameplate

@@ -517,6 +517,7 @@ function CreateNeatPlatesStatusbar(parent)
 		-- Create native StatusBar as the primary bar element
 		local nativeBar = CreateFrame("StatusBar", nil, frame)
 		nativeBar:SetAllPoints(frame)
+		nativeBar:EnableMouse(false)  -- Let clicks pass through to Blizzard's HitTestFrame for targeting
 		nativeBar:SetMinMaxValues(0, 1)
 		nativeBar:SetValue(1)
 		nativeBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
