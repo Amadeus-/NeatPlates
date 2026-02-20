@@ -14,6 +14,7 @@ local isMidnight = select(4, GetBuildInfo()) >= 120000
 local SetTheme = NeatPlatesInternal.SetTheme	-- Use the protected version
 
 local GetAddOnMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
+local GetSpecialization = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization or GetSpecialization
 local version = GetAddOnMetadata("NeatPlates", "version")
 local versionString = "|cFF666666"..version
 

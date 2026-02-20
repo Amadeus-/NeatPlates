@@ -163,7 +163,7 @@ local function AlphaDelegate(...)
 	end
 
 	-- Check for secret value before using unit.name as table index (12.0.0+)
-	if LocalVars.UnitSpotlightOpacityEnable and unit.name and not issecretvalue(unit.name) and LocalVars.UnitSpotlightLookup[unit.name] then
+	if LocalVars.UnitSpotlightOpacityEnable and unit.name and not (issecretvalue and issecretvalue(unit.name)) and LocalVars.UnitSpotlightLookup[unit.name] then
 		return LocalVars.UnitSpotlightOpacity
 	end
 
