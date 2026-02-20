@@ -433,37 +433,43 @@ local function GetUnitQuestInfo(unit)
 			-- QuestObjective
 
 			local lineType = line.type
-			if lineType == Enum.TooltipDataLineType.QuestTitle then
-				lastQuestTitle = line.leftText
-				questList[lastQuestTitle] = questList[lastQuestTitle] or {}
-			elseif lineType == Enum.TooltipDataLineType.QuestPlayer then
-				lastQuestPlayer = line.leftText
-			elseif lineType == Enum.TooltipDataLineType.QuestObjective then
-				if lastQuestPlayer == nil or lastQuestPlayer == playerName then
-					questList[lastQuestTitle][line.leftText] = line.completed
+			-- Skip lines with secret type or leftText values (tooltip data can be tainted in combat)
+			if issecretvalue and (issecretvalue(lineType) or issecretvalue(line.leftText)) then
+				-- Cannot safely read this line's data; skip it
+			else
+				if lineType == Enum.TooltipDataLineType.QuestTitle then
+					lastQuestTitle = line.leftText
+					questList[lastQuestTitle] = questList[lastQuestTitle] or {}
+				elseif lineType == Enum.TooltipDataLineType.QuestPlayer then
+					lastQuestPlayer = line.leftText
+				elseif lineType == Enum.TooltipDataLineType.QuestObjective then
+					if lastQuestPlayer == nil or lastQuestPlayer == playerName then
+						if lastQuestTitle then
+							questList[lastQuestTitle][line.leftText] = line.completed
+						end
+					end
 				end
-			end
-			-- Event Objective detection
-			if i > 1 and lineType == 0 then
-				local color = line.leftColor
-				local isSecret = issecretvalue and (issecretvalue(color) or issecretvalue(color.r) or issecretvalue(color.g) or issecretvalue(color.b))
-				if not isSecret and color.r > 0.99 and color.g >= 0.81 and color.b == 0 then -- QuestYellow
-					local text = line.leftText
-					if lastObjectiveTitle ~= nil and inGroup and UnitGUID(text) then
-						lastObjectivePlayer = text
+				-- Event Objective detection
+				if i > 1 and lineType == 0 then
+					local color = line.leftColor
+					if not (issecretvalue and issecretvalue(color)) and color and color.r > 0.99 and color.g >= 0.81 and color.b == 0 then -- QuestYellow
+						local text = line.leftText
+						if lastObjectiveTitle ~= nil and inGroup and UnitGUID(text) then
+							lastObjectivePlayer = text
+						else
+							lastObjectiveTitle = text
+							questList[lastObjectiveTitle] = questList[lastObjectiveTitle] or {}
+						end
+						lastObjectiveLine = i
+					elseif lastObjectiveTitle and lastObjectiveLine == (i - 1) then
+						if lastObjectivePlayer == nil or lastObjectivePlayer == playerName then
+							questList[lastObjectiveTitle][line.leftText] = false
+						end
+						lastObjectiveLine = i
 					else
-						lastObjectiveTitle = text
-						questList[lastObjectiveTitle] = questList[lastObjectiveTitle] or {}
+						lastObjectiveTitle = nil
+						lastObjectivePlayer = nil
 					end
-					lastObjectiveLine = i
-				elseif lastObjectiveTitle and lastObjectiveLine == (i - 1) then
-					if lastObjectivePlayer == nil or lastObjectivePlayer == playerName then
-						questList[lastObjectiveTitle][line.leftText] = false
-					end
-					lastObjectiveLine = i
-				else
-					lastObjectiveTitle = nil
-					lastObjectivePlayer = nil
 				end
 			end
 		end
@@ -613,6 +619,7 @@ do
 			for allyIndex = startAt, groupSize do
 				tempUnitid = groupType..allyIndex
 				tempThreat = select(3, UnitDetailedThreatSituation(tempUnitid, enemyUnitid))
+				if issecretvalue and issecretvalue(tempThreat) then tempThreat = nil end
 				if tempThreat and tempThreat > friendlyThreatval then
 					friendlyThreatval = tempThreat
 					friendlyUnitid = tempUnitid
@@ -623,6 +630,7 @@ do
 		-- Request Pet Threat (if possible)
 		if HasPetUI() and UnitExists("pet") then
 			tempThreat = select(3, UnitDetailedThreatSituation("pet", enemyUnitid)) or 0
+			if issecretvalue and issecretvalue(tempThreat) then tempThreat = 0 end
 			if tempThreat > friendlyThreatval then
 				friendlyThreatval = tempThreat
 				friendlyUnitid = "pet"
@@ -638,8 +646,10 @@ do
 
 		local playerIsTanking, playerSituation, playerThreat = UnitDetailedThreatSituation("player", enemyUnitid)
 		if not playerThreat then return end
+		if issecretvalue and issecretvalue(playerThreat) then return end
 
 		local friendlyUnitid, friendlyThreat = GetGroupThreatLeader(enemyUnitid)
+		if issecretvalue and issecretvalue(friendlyThreat) then friendlyThreat = nil end
 
 		-- Return the appropriate value
 		if playerThreat and friendlyThreat and friendlyUnitid then
