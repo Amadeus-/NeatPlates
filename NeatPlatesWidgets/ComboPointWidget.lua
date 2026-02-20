@@ -144,6 +144,7 @@ local function GetPlayerPower()
 	PlayerPowerUnmodified = t[PlayerClass]["NOMOD"]
 
 	local maxPoints = UnitPowerMax("player", PlayerPowerType, PlayerPowerUnmodified) or 5
+	if issecretvalue and issecretvalue(maxPoints) then maxPoints = 5 end
 
 	if PlayerPowerType == Enum.PowerType.ComboPoints then
 		points = GetComboPoints("player", "target")
@@ -153,6 +154,7 @@ local function GetPlayerPower()
 	else
 		points = UnitPower("player", PlayerPowerType, PlayerPowerUnmodified)
 	end
+	if issecretvalue and issecretvalue(points) then points = 0 end
 	return points, maxPoints
 end
 
@@ -293,16 +295,19 @@ end
 -- Context
 local function UpdateWidgetContext(frame, unit)
 	local guid = unit.guid
+	local guidIsSecret = issecretvalue and issecretvalue(guid)
 
 	-- Add to Widget List
-	if guid then
-		if frame.guid then WidgetList[frame.guid] = nil end
+	if guid and not guidIsSecret then
+		if frame.guid and not (issecretvalue and issecretvalue(frame.guid)) then WidgetList[frame.guid] = nil end
 		frame.guid = guid
 		WidgetList[guid] = frame
 	end
 
 	-- Update Widget
-	if UnitGUID("target") == guid then
+	local targetGUID = UnitGUID("target")
+	local isTarget = targetGUID and guid and not (issecretvalue and issecretvalue(targetGUID)) and not guidIsSecret and targetGUID == guid
+	if isTarget then
 		UpdateWidgetFrame(frame)
 	else
 		frame:_Hide()
@@ -311,7 +316,7 @@ end
 
 local function ClearWidgetContext(frame)
 	local guid = frame.guid
-	if guid then
+	if guid and not (issecretvalue and issecretvalue(guid)) then
 		WidgetList[guid] = nil
 		frame.guid = nil
 	end
@@ -333,7 +338,7 @@ WatcherFrame:RegisterEvent("UNIT_FLAGS")
 
 local function WatcherFrameHandler(frame, event, unitid)
 		local guid = UnitGUID("target")
-		if UnitExists("target") then
+		if UnitExists("target") and guid and not (issecretvalue and issecretvalue(guid)) then
 			local widget = WidgetList[guid]
 			if widget then UpdateWidgetFrame(widget) end				-- To update all, use: for guid, widget in pairs(WidgetList) do UpdateWidgetFrame(widget) end
 		end

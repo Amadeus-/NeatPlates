@@ -484,7 +484,7 @@ local function WarningBorderFunctionByThreat(unit)
 		if unit.reaction == "NEUTRAL" and unit.threatValue < 2 then return end
 
 		if isTank then
-				if (not unit.isInCombat and not UnitIsUnit(unit.unitid.."target", "player")) or IsOffTanked(unit) then return
+				if (not unit.isInCombat and not isTargetingPlayer) or IsOffTanked(unit) then return
 				elseif unit.threatValue == 2 then return LocalVars.ColorThreatTransition
 				elseif unit.threatValue < 2 then return LocalVars.ColorThreatWarning	end
 		elseif unit.threatValue > 0 then return ColorFunctionDamage(unit, true) end
@@ -625,7 +625,11 @@ end
 
 local function NameColorByThreat(unit)
 	if unit.reaction == "NEUTRAL" and unit.threatValue < 2 then return NameReactionColors[unit.reaction][unit.type]
-	elseif InCombatLockdown() and (unit.isInCombat or UnitIsUnit(unit.unitid.."target", "player")) then return ColorFunctionByThreat(unit)
+	elseif InCombatLockdown() then
+		local isTargetingMe = UnitIsUnit(unit.unitid.."target", "player")
+		if issecretvalue and issecretvalue(isTargetingMe) then isTargetingMe = false end
+		if unit.isInCombat or isTargetingMe then return ColorFunctionByThreat(unit) end
+		return NEATPLATES_CLASS_COLORS[unit.class or ""] or NameReactionColors[unit.reaction][unit.type]
 	else return NEATPLATES_CLASS_COLORS[unit.class or ""] or NameReactionColors[unit.reaction][unit.type] end
 end
 

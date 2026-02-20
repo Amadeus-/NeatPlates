@@ -77,13 +77,21 @@ local function IsEnemyTanked(unit)
 		local unitid = unit.unitid
 		local targetOf = unitid.."target"
 		--local targetIsTank = UnitIsUnit(targetOf, "pet") or GetPartyAssignment("MAINTANK", targetOf)
-		local targetIsTank = RaidTankList[UnitGUID(targetOf)] or UnitIsUnit(targetOf, "pet")
+		local targetOfGUID = UnitGUID(targetOf)
+		local guidTankResult
+		if targetOfGUID and not (issecretvalue and issecretvalue(targetOfGUID)) then
+			guidTankResult = RaidTankList[targetOfGUID]
+		end
+		local isUnitPet = UnitIsUnit(targetOf, "pet")
+		if issecretvalue and issecretvalue(isUnitPet) then isUnitPet = false end
+		local targetIsTank = guidTankResult or isUnitPet
 
 		return targetIsTank
 	else
 		local unitid = unit.unitid
 		local targetOf = unitid.."target"
-		local targetGUID = UnitGUID(targetOf)
+		local rawTargetGUID = UnitGUID(targetOf)
+		local targetGUID
 		local targetIsGuardian = false
 		local guardians = {
 			["61146"] = true, 	-- Black Ox Statue(61146)
@@ -92,12 +100,14 @@ local function IsEnemyTanked(unit)
 			["95072"] = true, 	-- Greater Earth Elemental(95072)
 		}
 
-		if targetGUID then
-			targetGUID = select(6, strsplit("-", UnitGUID(targetOf)))
+		if rawTargetGUID and not (issecretvalue and issecretvalue(rawTargetGUID)) then
+			targetGUID = select(6, strsplit("-", rawTargetGUID))
 			targetIsGuardian = guardians[targetGUID]
 		end
 		-- GetPartyAssignment("MAINTANK", raidid)
-		local targetIsTank = UnitIsUnit(targetOf, "pet") or targetIsGuardian or ("TANK" ==  UnitGroupRolesAssigned(targetOf))
+		local isUnitPet = UnitIsUnit(targetOf, "pet")
+		if issecretvalue and issecretvalue(isUnitPet) then isUnitPet = false end
+		local targetIsTank = isUnitPet or targetIsGuardian or ("TANK" ==  UnitGroupRolesAssigned(targetOf))
 
 		return targetIsTank
 	end
@@ -180,7 +190,7 @@ local function UpdateGroupRoles()
 
 				local isTank = GetPartyAssignment("MAINTANK", raidid)
 
-				if isTank then
+				if isTank and guid and not (issecretvalue and issecretvalue(guid)) then
 					RaidTankList[guid] = true
 				end
 
@@ -201,7 +211,7 @@ local function UpdateGroupRoles()
 
 				local isTank = GetPartyAssignment("MAINTANK", raidid) or ("TANK" == UnitGroupRolesAssigned(raidid))
 
-				if isTank then
+				if isTank and guid and not (issecretvalue and issecretvalue(guid)) then
 					RaidTankList[guid] = true
 				end
 
@@ -212,7 +222,10 @@ local function UpdateGroupRoles()
 		else
 			inRaid = false
 			if HasPetUI("player") and UnitName("pet") then
-				RaidTankList[UnitGUID("pet")] = true
+				local petGUID = UnitGUID("pet")
+				if petGUID and not (issecretvalue and issecretvalue(petGUID)) then
+					RaidTankList[petGUID] = true
+				end
 			end
 		end
 
@@ -220,11 +233,14 @@ local function UpdateGroupRoles()
 end
 
 local function ToggleTank(arg)
-	if not IsInGroup() or not UnitExists("target") or UnitIsUnit("player", "target") or not UnitIsPlayer("target") or not UnitIsFriend("player", "target") then
+	local isUnitSelf = UnitIsUnit("player", "target")
+	if issecretvalue and issecretvalue(isUnitSelf) then isUnitSelf = false end
+	if not IsInGroup() or not UnitExists("target") or isUnitSelf or not UnitIsPlayer("target") or not UnitIsFriend("player", "target") then
 		if arg ~= "noError" then print(orange..L["NeatPlates"]..": "..red..L["Couldn't update the targets role."]) end
 	else
 		local name = UnitName("target")
 		local guid = UnitGUID("target")
+		if not guid or (issecretvalue and issecretvalue(guid)) then return end
 		local isTank = GetPartyAssignment("MAINTANK", "target") or not RaidTankList[guid]
 		local role
 		if isTank then role = blue..L["Tank"] else role = white..L["None"] end

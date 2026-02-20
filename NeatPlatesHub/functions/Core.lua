@@ -68,7 +68,9 @@ local function ThreatExceptions(unit, isTank, noSafeColor)
 
 	-- Special case dealing with mobs from Reaping affix and units that fixate
 	if souls[unitGUID] or unit.fixate then
-		local playerIsTarget = unit.fixate or UnitIsUnit(unit.unitid.."target", "player")
+		local isTargetingMe = UnitIsUnit(unit.unitid.."target", "player")
+		if issecretvalue and issecretvalue(isTargetingMe) then isTargetingMe = false end
+		local playerIsTarget = unit.fixate or isTargetingMe
 		if (playerIsTarget and isTank) or (not playerIsTarget and not isTank) then
 				return noSafeColor or LocalVars.ColorThreatSafe
 		else

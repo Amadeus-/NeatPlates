@@ -65,11 +65,14 @@ end
 -- Context
 local function UpdateWidgetContext(self, unit)
 	local guid = unit.guid
-	self.guid = guid
+	local guidIsSecret = issecretvalue and issecretvalue(guid)
 
 	-- Add to Widget List
-	if guid then
+	if guid and not guidIsSecret then
+		self.guid = guid
 		WidgetList[guid] = self
+	else
+		self.guid = nil
 	end
 
 	-- Custom Code II
@@ -81,7 +84,7 @@ end
 
 local function ClearWidgetContext(self)
 	local guid = self.guid
-	if guid then
+	if guid and not (issecretvalue and issecretvalue(guid)) then
 		WidgetList[guid] = nil
 		self.guid = nil
 	end

@@ -150,6 +150,8 @@ local t = {
             local points = {}
             local maxPoints = UnitPowerMax("player", Enum.PowerType.ComboPoints) or 5
             local currentPoints = GetComboPoints("player", "target")
+            if issecretvalue and issecretvalue(maxPoints) then maxPoints = 5 end
+            if issecretvalue and issecretvalue(currentPoints) then currentPoints = 0 end
             local powerType, powerTypeString = UnitPowerType("player");
 
             -- Don't show if not in cat form
@@ -181,6 +183,8 @@ local t = {
             local points = {}
             local maxPoints = UnitPowerMax("player", Enum.PowerType.ComboPoints) or 5
             local currentPoints = GetComboPoints("player", "target")
+            if issecretvalue and issecretvalue(maxPoints) then maxPoints = 5 end
+            if issecretvalue and issecretvalue(currentPoints) then currentPoints = 0 end
             local chargedPoints = nil
 
             if not NEATPLATES_IS_CLASSIC then
@@ -243,6 +247,8 @@ local t = {
             local points = {}
             local maxPoints = UnitPowerMax("player", Enum.PowerType.HolyPower) or 5
             local currentPoints = UnitPower("player", Enum.PowerType.HolyPower)
+            if issecretvalue and issecretvalue(maxPoints) then maxPoints = 5 end
+            if issecretvalue and issecretvalue(currentPoints) then currentPoints = 0 end
 
             for i = 1, maxPoints do
                 local point = {
@@ -284,6 +290,8 @@ for class, data in pairs(t) do
             local points = {}
             local maxPoints = UnitPowerMax("player", data["POWER"]) or 5
             local currentPoints = UnitPower("player", data["POWER"])
+            if issecretvalue and issecretvalue(maxPoints) then maxPoints = 5 end
+            if issecretvalue and issecretvalue(currentPoints) then currentPoints = 0 end
 
             if hideOnEmpty and data["HIDE_ON_EMPTY"] and currentPoints == 0 then
                 return nil, nil
