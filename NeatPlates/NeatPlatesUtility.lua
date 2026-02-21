@@ -131,6 +131,7 @@ end
 
 local function valueToString(value)
     if value ~= nil then
+        if issecretvalue and issecretvalue(value) then return "" end
         if value >= 1000000 then return format('%.1fm', value / 1000000)
         elseif value >= 1000 then return format('%.1fk', value / 1000)
         else return value end

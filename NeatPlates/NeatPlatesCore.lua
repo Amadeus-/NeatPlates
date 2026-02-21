@@ -382,7 +382,12 @@ end
 
 local function toggleNeatPlatesTarget(show, ...)
 	if not ShowEmulatedTargetPlate then return end
-	local friendlyPlates, enemyPlates = GetCVar("nameplateShowFriends") == "0" and UnitIsFriend("player", "target"), GetCVar("nameplateShowEnemies") == "0" and UnitIsEnemy("player", "target")
+	local friendlyResult = UnitIsFriend("player", "target")
+	if issecretvalue and issecretvalue(friendlyResult) then friendlyResult = false end
+	local enemyResult = UnitIsEnemy("player", "target")
+	if issecretvalue and issecretvalue(enemyResult) then enemyResult = false end
+	local friendlyPlates = GetCVar("nameplateShowFriends") == "0" and friendlyResult
+	local enemyPlates = GetCVar("nameplateShowEnemies") == "0" and enemyResult
 
 	-- Create a new target frame if needed
 	if not NeatPlatesTarget then
@@ -1310,7 +1315,11 @@ do
 		unit.isTrivial = (c.r == 0.5 and c.g == 0.5 and c.b == 0.5)
 
 		unit.red, unit.green, unit.blue = UnitSelectionColor(unitid)
-		unit.reaction = GetReactionByColor(unit.red, unit.green, unit.blue) or "HOSTILE"
+		if issecretvalue and (issecretvalue(unit.red) or issecretvalue(unit.green) or issecretvalue(unit.blue)) then
+			unit.reaction = unitcache.reaction or "HOSTILE"
+		else
+			unit.reaction = GetReactionByColor(unit.red, unit.green, unit.blue) or "HOSTILE"
+		end
 		-- unit.reaction = GetReactionByUnit(unit) or "HOSTILE"
 
 		-- Health and power can be secret values in 12.0.0+ during combat
@@ -1340,6 +1349,7 @@ do
 		unit.threatValue = 0
 		if ThreatSoloEnable or UnitInParty("player") or UnitExists("pet") then
 			unit.threatValue = UnitThreatSituation("player", unitid) or 0
+			if issecretvalue and issecretvalue(unit.threatValue) then unit.threatValue = 0 end
 			unit.threatSituation = ThreatReference[unit.threatValue]
 		end
 		unit.isInCombat = UnitAffectingCombat(unitid)

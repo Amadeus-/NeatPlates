@@ -7,7 +7,9 @@ local GetArenaIndex = NeatPlatesUtility.GetArenaIndex
 
 local function UpdateArenaWidget(self, unit)
 	local arenastring = ""
-	local arenaindex = GetArenaIndex(unit.rawName)
+	local rawName = unit.rawName
+	if issecretvalue and issecretvalue(rawName) then rawName = nil end
+	local arenaindex = GetArenaIndex(rawName)
 
 	if NeatPlates._TestMode then arenaindex = 2 end -- Test Mode
 
