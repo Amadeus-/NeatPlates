@@ -2917,7 +2917,7 @@ end
 
 local function GetSpellInfoUnpacked(spellidentifier)
 	if not NEATPLATES_IS_CLASSIC_ERA and C_Spell and C_Spell.GetSpellInfo then
-		info = C_Spell.GetSpellInfo(spellname)
+		info = C_Spell.GetSpellInfo(spellidentifier)
 		if info == nil then
 			return nil, nil
 		end
