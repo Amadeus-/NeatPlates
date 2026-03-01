@@ -29,6 +29,7 @@ end
 -- Combo Point Widget
 ------------------------------
 
+local issecretvalue = issecretvalue or function() return false end
 
 local comboWidgetPath = "Interface\\Addons\\NeatPlatesWidgets\\ComboWidget\\"
 local artpath = "Interface\\Addons\\NeatPlatesWidgets\\ComboWidget\\"

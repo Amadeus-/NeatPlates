@@ -9,6 +9,7 @@
 
 local LibClassicDurations
 local _UnitAura = UnitAura
+local issecretvalue = issecretvalue or function() return false end
 
 -- 12.0.0+ Secret Value Handling:
 -- In WoW 12.0.0+, aura data fields can be "secret values" during combat that cannot be

@@ -38,6 +38,7 @@ local IsHealer = NeatPlatesUtility.IsHealer
 local InstanceStatus = NeatPlatesUtility.InstanceStatus
 
 local LastErrorMessage = 0
+local issecretvalue = issecretvalue or function() return false end
 
 local EMPTY_TEXTURE = "Interface\\Addons\\NeatPlates\\Media\\Empty"
 

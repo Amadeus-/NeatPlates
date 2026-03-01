@@ -31,6 +31,7 @@ local AddHubFunction = NeatPlatesHubHelpers.AddHubFunction
 local SafeHealthPercent = NeatPlatesHubHelpers.SafeHealthPercent
 local SafeIsDamaged = NeatPlatesHubHelpers.SafeIsDamaged
 local SafeNumber = NeatPlatesHubHelpers.SafeNumber
+local issecretvalue = issecretvalue or function() return false end
 
 -- 12.0.0+ API availability check
 local UnitHealthPercentAPI = UnitHealthPercent

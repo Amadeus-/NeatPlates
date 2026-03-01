@@ -10,6 +10,7 @@ local L = LibStub("AceLocale-3.0"):GetLocale("NeatPlates")
 
 -- Version detection for 12.0.0+ (Midnight)
 local isMidnight = select(4, GetBuildInfo()) >= 120000
+local issecretvalue = issecretvalue or function() return false end
 
 local SetTheme = NeatPlatesInternal.SetTheme	-- Use the protected version
 

@@ -7,6 +7,7 @@ local GetUnitQuestInfo = NeatPlatesUtility.GetUnitQuestInfo
 local IsPartyMember = NeatPlatesUtility.IsPartyMember
 -- 12.0.0+ Secret value helpers
 local SafeIsDamaged = NeatPlatesHubHelpers.SafeIsDamaged
+local issecretvalue = issecretvalue or function() return false end
 
 ------------------------------------------------------------------------------
 -- Unit Filter

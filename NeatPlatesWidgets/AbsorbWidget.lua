@@ -4,6 +4,7 @@
 
 -- Version check for 12.0.0+ (Midnight) API changes
 local isMidnight = select(4, GetBuildInfo()) >= 120000
+local issecretvalue = issecretvalue or function() return false end
 
 -- Safe numeric value helper for 12.0.0+ (absorb values can be secret in combat)
 -- Returns the numeric value if safe, or the fallback if it's a secret value

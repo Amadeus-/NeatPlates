@@ -20,6 +20,7 @@ local function DummyFunction() end
 local SafeHealthPercent = NeatPlatesHubHelpers.SafeHealthPercent
 local SafeIsDamaged = NeatPlatesHubHelpers.SafeIsDamaged
 local SafeHasHealth = NeatPlatesHubHelpers.SafeHasHealth
+local issecretvalue = issecretvalue or function() return false end
 
 ------------------------------------------------------------------------------
 -- Opacity / Alpha

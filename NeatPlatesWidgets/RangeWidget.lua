@@ -4,6 +4,7 @@
 
 local AddonName, NeatPlatesInternal = ...
 local rc = LibStub('LibRangeCheck-3.0')
+local issecretvalue = issecretvalue or function() return false end
 
 local font = "FONTS\\arialn.ttf"
 

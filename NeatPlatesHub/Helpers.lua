@@ -5,6 +5,7 @@
 
 -- Version check for 12.0.0+ (Midnight) API changes
 local isMidnight = select(4, GetBuildInfo()) >= 120000
+local issecretvalue = issecretvalue or function() return false end
 
 -- Secret value helpers for 12.0.0+ (health/power can be secret values in combat)
 -- Use unit.healthSafe/unit.powermaxSafe etc. which are set in NeatPlatesCore

@@ -29,6 +29,7 @@ end
 -- the texture. SetVertexColor() MULTIPLIES with the texture's pixel data, preserving grey
 -- gradients in theme textures (like NeatPlates_Grey's Statusbar.tga) that give the muted look.
 local isMidnight = select(4, GetBuildInfo()) >= 120000
+local issecretvalue = issecretvalue or function() return false end
 
 ----------------------------------------------------------------------
 -- Legacy Implementation (pre-12.0.0)

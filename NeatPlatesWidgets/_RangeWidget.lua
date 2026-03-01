@@ -9,6 +9,7 @@
 --]]
 
 local GetGroupInfo = NeatPlatesUtility.GetGroupInfo
+local issecretvalue = issecretvalue or function() return false end
 local RangesCache = {}
 local Ranges = {}
 local RangeWatcher = CreateFrame("Frame")

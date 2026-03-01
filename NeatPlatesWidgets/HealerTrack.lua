@@ -20,6 +20,7 @@ local isMidnight = select(4, GetBuildInfo()) >= 120000
 
 -- CombatLogGetCurrentEventInfo compatibility (moved to C_CombatLog namespace in 12.0.0)
 local CombatLogGetCurrentEventInfo = C_CombatLog and C_CombatLog.GetCurrentEventInfo or CombatLogGetCurrentEventInfo
+local issecretvalue = issecretvalue or function() return false end
 
 local RoleList = {}
 

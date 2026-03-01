@@ -40,6 +40,7 @@ local StyleDelegate = NeatPlatesHubFunctions.SetStyleNamed
 local AddHubFunction = NeatPlatesHubHelpers.AddHubFunction
 -- 12.0.0+ Secret value helpers
 local SafeHealthPercent = NeatPlatesHubHelpers.SafeHealthPercent
+local issecretvalue = issecretvalue or function() return false end
 
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------

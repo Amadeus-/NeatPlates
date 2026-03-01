@@ -3,6 +3,7 @@ local WidgetList = {}
 local PlayerClass = select(2, UnitClass("player"))
 local PlayerSpec = 0
 local TimerFont = "FONTS\\ARIALN.TTF"
+local issecretvalue = issecretvalue or function() return false end
 
 -- API compatibility wrappers for 12.0.0+
 local GetSpecialization = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization or GetSpecialization

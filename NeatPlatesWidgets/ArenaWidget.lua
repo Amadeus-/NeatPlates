@@ -4,6 +4,7 @@
 
 local font = "FONTS\\arialn.ttf"
 local GetArenaIndex = NeatPlatesUtility.GetArenaIndex
+local issecretvalue = issecretvalue or function() return false end
 
 local function UpdateArenaWidget(self, unit)
 	local arenastring = ""

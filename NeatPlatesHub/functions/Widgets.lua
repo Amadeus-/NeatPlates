@@ -25,6 +25,7 @@ local CreateAbsorbWidget = WidgetLib.CreateAbsorbWidget
 local CreateQuestWidget = WidgetLib.CreateQuestWidget
 local CreateThreatPercentageWidget = WidgetLib.CreateThreatPercentageWidget
 local CreateResourceWidget = WidgetLib.CreateResourceWidget
+local issecretvalue = issecretvalue or function() return false end
 
 NeatPlatesHubDefaults.WidgetRangeMode = 1
 NeatPlatesHubMenus.RangeModes = {

@@ -6,6 +6,7 @@ NeatPlatesWidgetSettings = {
 -- 12.0.0 API compatibility wrappers
 local CombatLogGetCurrentEventInfo = C_CombatLog and C_CombatLog.GetCurrentEventInfo or CombatLogGetCurrentEventInfo
 local GetSpecializationRole = C_SpecializationInfo and C_SpecializationInfo.GetSpecializationRole or GetSpecializationRole
+local issecretvalue = issecretvalue or function() return false end
 
 -- UnitBuff deprecation compatibility - returns spellId from buff at index
 local function GetBuffSpellId(unit, index)
