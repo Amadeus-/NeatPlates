@@ -500,15 +500,15 @@ end
 
 -- Widget Context
 local function ClearWidgetContext(frame)
-	local guid = frame.guid
-	if guid and not issecretvalue(guid) then
-		WidgetList[guid] = nil
-		frame.guid = nil
+	local unitid = frame.unitid
+	if unitid then
+		WidgetList[unitid] = nil
+		frame.unitid = nil
 	end
 end
 
 local function UpdateWidgetContext(frame, unit)
-	local guid = unit.guid
+	local unitid = unit.unitid
 
     -- Update settings
     table.foreach(frame.Points, function(k, f)
@@ -517,15 +517,15 @@ local function UpdateWidgetContext(frame, unit)
     end)
 
 	-- Add to Widget List
-	if guid and not issecretvalue(guid) then
-		if frame.guid and not issecretvalue(frame.guid) then WidgetList[frame.guid] = nil end
-		frame.guid = guid
-		WidgetList[guid] = frame
+	if unitid then
+		if frame.unitid then WidgetList[frame.unitid] = nil end
+		frame.unitid = unitid
+		WidgetList[unitid] = frame
 	end
 
     -- Update Widget
-    local targetGUID = UnitGUID("target")
-    local isTarget = targetGUID and guid and not issecretvalue(targetGUID) and not issecretvalue(guid) and targetGUID == guid
+    local isTarget = unitid and UnitIsUnit(unitid, "target")
+    if issecretvalue and issecretvalue(isTarget) then isTarget = false end
     if isTarget then
         frame:Show()
         frame:Update()
@@ -548,11 +548,15 @@ WatcherFrame:RegisterEvent("UNIT_AURA")
 WatcherFrame:RegisterEvent("UNIT_FLAGS")
 
 local function WatcherFrameHandler(frame, event, unitid)
-    local guid = UnitGUID("target")
-    if UnitExists("target") and guid and not issecretvalue(guid) then
-        local widget = WidgetList[guid]
-        -- print("WatcherFrameHandler", event, guid, widget)
-        if widget then UpdateWidgetFrame(widget) end				-- To update all, use: for guid, widget in pairs(WidgetList) do UpdateWidgetFrame(widget) end
+    if UnitExists("target") then
+        for id, widget in pairs(WidgetList) do
+            local isTarget = UnitIsUnit(id, "target")
+            if issecretvalue and issecretvalue(isTarget) then isTarget = false end
+            if isTarget then
+                UpdateWidgetFrame(widget)
+                break
+            end
+        end
     end
 end
 
