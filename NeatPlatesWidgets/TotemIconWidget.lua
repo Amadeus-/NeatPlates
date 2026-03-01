@@ -4,6 +4,7 @@
 local round = NeatPlatesUtility.round
 
 local issecretvalue = issecretvalue or function() return false end
+local scrubsecretvalues = scrubsecretvalues or function(...) return ... end
 local classWidgetPath = "Interface\\Addons\\NeatPlatesWidgets\\ClassWidget\\"
 local TotemIcons, TotemTypes, TotemDurations = {}, {}, {}
 local TotemFont = "FONTS\\ARIALN.TTF"
@@ -221,7 +222,7 @@ local function UpdateWidgetConfig(frame)
 
 	local expiration = 0
 	for i=1, MAX_TOTEMS do
-		local exists, name, startTime, duration = GetTotemInfo(i)
+		local exists, name, startTime, duration = scrubsecretvalues(GetTotemInfo(i))
 		name = getTotemName(name)
 		if exists and name then
 			TotemDurations[name] = {
