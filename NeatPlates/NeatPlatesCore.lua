@@ -1351,8 +1351,30 @@ do
 
 		unit.threatValue = 0
 		if ThreatSoloEnable or UnitInParty("player") or UnitExists("pet") then
-			unit.threatValue = UnitThreatSituation("player", unitid) or 0
-			if issecretvalue and issecretvalue(unit.threatValue) then unit.threatValue = 0 end
+			local rawThreat = UnitThreatSituation("player", unitid)
+			if rawThreat ~= nil and not (issecretvalue and issecretvalue(rawThreat)) then
+				-- Normal path: API returned a usable value
+				unit.threatValue = rawThreat
+			elseif isMidnight and UnitAffectingCombat(unitid) then
+				-- WoW 12.0.0+ fallback: UnitThreatSituation returns nil/secret from addon code.
+				-- Use combat detection heuristic (similar to Platynator's IsInCombatWith approach):
+				-- Check if the mob is targeting the player to approximate threat status.
+				local mobTargetingPlayer = UnitIsUnit(unitid.."target", "player")
+				if issecretvalue and issecretvalue(mobTargetingPlayer) then mobTargetingPlayer = false end
+				if mobTargetingPlayer then
+					unit.threatValue = 3	-- Mob targeting player = highest threat (tanking)
+				else
+					-- Mob in combat but not targeting player.
+					-- Check if targeting any party/raid member to differentiate "engaged with group" vs "not engaged".
+					local mobTargetInGroup = UnitPlayerOrPetInParty(unitid.."target") or UnitPlayerOrPetInRaid(unitid.."target")
+					if issecretvalue and issecretvalue(mobTargetInGroup) then mobTargetInGroup = false end
+					if mobTargetInGroup then
+						unit.threatValue = 0	-- Mob targeting someone else in group = low threat
+					else
+						unit.threatValue = 0	-- Mob in combat but target unknown
+					end
+				end
+			end
 			unit.threatSituation = ThreatReference[unit.threatValue]
 		end
 		unit.isInCombat = UnitAffectingCombat(unitid)

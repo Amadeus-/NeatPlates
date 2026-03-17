@@ -8,7 +8,7 @@ local L = LibStub("AceLocale-3.0"):GetLocale("NeatPlates")
 -- The main "Show Mine" filter now uses the |PLAYER API filter (handled in AuraWidget.lua).
 -- This flag is still used for custom aura lists with "my" prefix, which need special handling
 -- since the |PLAYER filter is applied globally and custom lists may need different behavior.
-local isWoW12Plus = NeatPlatesHubHelpers and NeatPlatesHubHelpers.isMidnight or (select(4, GetBuildInfo()) >= 120000)
+local isMidnight = NeatPlatesHubHelpers and NeatPlatesHubHelpers.isMidnight or (select(4, GetBuildInfo()) >= 120000)
 
 -- Widget Helpers
 local WidgetLib = NeatPlatesWidgets
@@ -455,7 +455,7 @@ local AURA_TYPE_COLORS = {
 local function GetPrefixPriority(aura, auraType)
 	-- In WoW 12.0+, aura data (name, spellId) is secret during combat, making custom
 	-- aura list matching non-functional. Skip all custom list processing.
-	if isWoW12Plus then return nil, nil end
+	if isMidnight then return nil, nil end
 
 	if not auraType then auraType = "normal" end
 
@@ -504,7 +504,7 @@ end
 
 -- Helper function to safely check if caster matches a value (handles 12.0.0+ secret values)
 -- For pre-12.0: Returns true/false based on caster comparison
--- For 12.0+: This function is typically bypassed by isWoW12Plus checks,
+-- For 12.0+: This function is typically bypassed by isMidnight checks,
 --            but if called, it will return false when values are secret
 local function CasterMatches(caster, value, isFromPlayer)
 	-- In 12.0.0+, caster (sourceUnit) can be a secret value
@@ -581,7 +581,7 @@ local function SmartFilterMode(aura)
 		local show
 
 		-- For WoW 12.0+ with "my" prefix in custom lists, treat as "all" since ownership is unknowable
-		if isWoW12Plus and prefix == "my" then
+		if isMidnight and prefix == "my" then
 			show = true
 		else
 			show = DebuffPrefixModes[prefix](aura)
@@ -663,7 +663,7 @@ local function EmphasizedFilter(aura)
 	if prefix and priority then
 		local show
 		-- For WoW 12.0+ with "my" prefix, treat as "all" since ownership is unknowable
-		if isWoW12Plus and prefix == "my" then
+		if isMidnight and prefix == "my" then
 			show = true
 		else
 			show = DebuffPrefixModes[prefix](aura)
@@ -752,12 +752,13 @@ local function OnInitializeWidgets(extended, configTable)
 	local EnableTotemWidget = LocalVars.WidgetTotemIcon
 	local EnableComboWidget = LocalVars.WidgetComboPoints ~= 4 and LocalVars.WidgetResourceMode == 4
 	local EnableResourceWidget = LocalVars.WidgetResourceMode ~= 4
-	local EnableThreatWidget = LocalVars.WidgetThreatIndicator
+	-- WoW 12.0.0+: Force-disable threat widgets that require UnitDetailedThreatSituation
+	local EnableThreatWidget = isMidnight and false or LocalVars.WidgetThreatIndicator
 	local EnableAuraWidget = LocalVars.WidgetDebuff
 	local EnableArenaWidget = LocalVars.WidgetArenaIcon
 	local EnableAbsorbWidget = LocalVars.WidgetAbsorbIndicator
 	local EnableQuestWidget = LocalVars.WidgetQuestIcon
-	local EnableThreatPercentageWidget = LocalVars.WidgetThreatPercentage
+	local EnableThreatPercentageWidget = isMidnight and false or LocalVars.WidgetThreatPercentage
 	local EnableRangeWidget = LocalVars.WidgetRangeIndicator
 
 	ThreatInitDbg("OnInitializeWidgets: EnableThreatPercentageWidget=" .. tostring(EnableThreatPercentageWidget) .. " configTable.ThreatPercentageWidget=" .. tostring(configTable.ThreatPercentageWidget ~= nil) .. " CreateThreatPercentageWidget fn=" .. tostring(CreateThreatPercentageWidget ~= nil))
@@ -798,7 +799,7 @@ local function OnContextUpdateDelegate(extended, unit)
 		widgets.ComboWidgetHub:Hide()
 	end
 
-	if LocalVars.WidgetThreatIndicator and widgets.ThreatWidgetHub then
+	if not isMidnight and LocalVars.WidgetThreatIndicator and widgets.ThreatWidgetHub then
 		widgets.ThreatWidgetHub:UpdateContext(unit) end		-- Tug-O-Threat
 
 	if LocalVars.WidgetDebuff and widgets.AuraWidgetHub then
@@ -822,11 +823,8 @@ local function OnContextUpdateDelegate(extended, unit)
 	if LocalVars.WidgetAbsorbIndicator and widgets.AbsorbWidgetHub then
 		widgets.AbsorbWidgetHub:UpdateContext(unit) end
 
-	if LocalVars.WidgetThreatPercentage and widgets.ThreatPercentageWidgetHub then
-		ThreatInitDbg("OnContextUpdate: calling UpdateContext for ThreatPercentageWidgetHub")
+	if not isMidnight and LocalVars.WidgetThreatPercentage and widgets.ThreatPercentageWidgetHub then
 		widgets.ThreatPercentageWidgetHub:UpdateContext(unit)
-	else
-		ThreatInitDbg("OnContextUpdate: SKIPPED ThreatPercentageWidgetHub | enabled=" .. tostring(LocalVars.WidgetThreatPercentage) .. " widget=" .. tostring(widgets.ThreatPercentageWidgetHub ~= nil))
 	end
 
 	if LocalVars.WidgetRangeIndicator and widgets.RangeWidgetHub then

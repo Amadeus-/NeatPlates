@@ -3,6 +3,10 @@ local GetRelativeThreat = NeatPlatesUtility.GetRelativeThreat
 local GetGroupInfo = NeatPlatesUtility.GetGroupInfo
 local IsEnemyTanked = NeatPlatesWidgets.IsEnemyTanked
 
+-- WoW 12.0.0+: UnitDetailedThreatSituation returns nil/secret from addon code.
+-- This widget requires numeric threat percentages and cannot function.
+local isMidnight = select(4, GetBuildInfo()) >= 120000
+
 
 ------------------------
 -- Threat Function
@@ -93,6 +97,8 @@ local testMode = false
 
 -- Graphics Update
 local function UpdateThreatLine(frame, unitid)
+	if isMidnight then frame:_Hide(); return end
+
 	local maxwidth = 50
 	--local maxwidth = frame._MaximumWidth
 	local length = 0
@@ -152,6 +158,8 @@ local function UpdateWidgetTarget(frame)
 end
 
 local function UpdateWidgetContext(frame, unit)
+	if isMidnight then frame:_Hide(); return end
+
 	local unitid = unit.unitid
 
 	if unit.reaction == "FRIENDLY" or (not InCombatLockdown()) or (not (UnitInParty("player") or HasPetUI())) then

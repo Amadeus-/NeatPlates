@@ -517,17 +517,30 @@ NeatPlatesUtility.GetArenaIndex = GetArenaIndex
 
 -- /run print(UnitThreatSituation("party1"), UnitAffectingCombat("party1"))
 --local function GetThreatCondition(name)
+-- WoW 12.0.0+ version check for threat fallback
+local isMidnight_friendlyThreat = select(4, GetBuildInfo()) >= 120000
+
 local function GetFriendlyThreat(unitid)
-
 	if unitid then
-		local isUnitInParty = UnitPlayerOrPetInParty(unit)
-		local isUnitInRaid = UnitInRaid(unit)
-		local isUnitPet = (unit == "pet")
-
-		--if isUnitInParty then
-			local unitaggro = UnitThreatSituation(unitid)
-			if unitaggro and unitaggro > 1 then return true end
-		--end
+		local unitaggro = UnitThreatSituation(unitid)
+		if unitaggro and not (issecretvalue and issecretvalue(unitaggro)) then
+			-- Normal path: API returned a usable value
+			if unitaggro > 1 then return true end
+		elseif isMidnight_friendlyThreat then
+			-- WoW 12.0.0+ fallback: UnitThreatSituation returns nil/secret from addon code.
+			-- A friendly unit "has aggro" if it is in combat and something is targeting it.
+			-- Check if the unit is affecting combat and being targeted by a hostile unit.
+			if UnitAffectingCombat(unitid) then
+				-- Check if the friendly unit's target's target is the friendly unit itself
+				-- (i.e., something is attacking it back). This is a simplified heuristic.
+				local targetOf = unitid.."target"
+				if UnitExists(targetOf) then
+					local targetTargetsUnit = UnitIsUnit(targetOf.."target", unitid)
+					if issecretvalue and issecretvalue(targetTargetsUnit) then targetTargetsUnit = false end
+					if targetTargetsUnit then return true end
+				end
+			end
+		end
 	end
 end
 
@@ -643,7 +656,12 @@ do
 
 	end
 
+	-- WoW 12.0.0+: UnitDetailedThreatSituation returns nil/secret from addon code.
+	-- This function requires numeric threat percentages and cannot produce meaningful results.
+	local isMidnight_threat = select(4, GetBuildInfo()) >= 120000
+
 	local function GetRelativeThreat(enemyUnitid)		-- 'enemyUnitid' is a target/enemy
+		if isMidnight_threat then return end
 		if not UnitExists(enemyUnitid) then return end
 
 		local playerIsTanking, playerSituation, playerThreat = UnitDetailedThreatSituation("player", enemyUnitid)

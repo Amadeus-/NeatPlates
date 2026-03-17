@@ -39,6 +39,7 @@ local InstanceStatus = NeatPlatesUtility.InstanceStatus
 
 local LastErrorMessage = 0
 local issecretvalue = issecretvalue or function() return false end
+local isMidnight = NeatPlatesHubHelpers and NeatPlatesHubHelpers.isMidnight or (select(4, GetBuildInfo()) >= 120000)
 
 local EMPTY_TEXTURE = "Interface\\Addons\\NeatPlates\\Media\\Empty"
 
@@ -188,6 +189,14 @@ local function UseVariables(profileName)
 			LocalVars = NeatPlatesHubSettings[objectName] or CreateVariableSet(objectName)
 
 			MergeProfileValues(LocalVars, NeatPlatesHubDefaults)		-- If the value doesn't exist in the settings, create it.
+
+			-- WoW 12.0.0+: Force-disable settings that require UnitDetailedThreatSituation
+			-- (returns nil/secret from addon code). Even if saved as enabled from a pre-12.0.0 config,
+			-- these widgets cannot function and would cause errors or display garbage.
+			if isMidnight then
+				LocalVars.WidgetThreatIndicator = false
+				LocalVars.WidgetThreatPercentage = false
+			end
 
 			CurrentProfileName = suffix
 

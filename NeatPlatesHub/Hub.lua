@@ -524,8 +524,16 @@ local function BuildHubPanel(panel)
 
 	--panel.ColorThreatColorLabels = CreateQuickItemLabel(nil, L["Threat Colors"]..':', AlignmentColumn, panel.ThreatGlowEnable, 0, 2)
 
-	panel.WidgetThreatIndicator, F = CreateQuickCheckbutton(objectName.."WidgetThreatIndicator", L["Show Tug-o-Threat Indicator"], AlignmentColumn, panel.SafeColorSolo, 0, 2)
-	panel.WidgetThreatPercentage, F = CreateQuickCheckbutton(objectName.."WidgetThreatPercentage", L["Show Threat Percentage"], AlignmentColumn, panel.WidgetThreatIndicator, 0, 2)
+	-- In WoW 12.0.0+, UnitDetailedThreatSituation returns nil/secret from addon code.
+	-- The Tug-o-Threat Indicator and Threat Percentage widgets require numeric threat data
+	-- and cannot function. Hide these checkboxes and leave F anchored to SafeColorSolo.
+	if not isMidnight then
+		panel.WidgetThreatIndicator, F = CreateQuickCheckbutton(objectName.."WidgetThreatIndicator", L["Show Tug-o-Threat Indicator"], AlignmentColumn, panel.SafeColorSolo, 0, 2)
+		panel.WidgetThreatPercentage, F = CreateQuickCheckbutton(objectName.."WidgetThreatPercentage", L["Show Threat Percentage"], AlignmentColumn, panel.WidgetThreatIndicator, 0, 2)
+	else
+		-- Update F so subsequent elements anchor correctly below SafeColorSolo
+		F = panel.SafeColorSolo
+	end
 
 	--[[
 	-- Warning Border Glow
