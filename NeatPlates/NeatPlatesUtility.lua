@@ -2204,6 +2204,7 @@ do
 	local DebugLog = {}
 	local MAX_DEBUG_ENTRIES = 1000
 	local debugFrame = nil
+	local debugPaused = false
 
 	-- Safely convert a value to a string, handling secret values that reject tostring()
 	local function SafeToString(val)
@@ -2217,6 +2218,7 @@ do
 
 	-- Add a debug message to the log
 	local function AddDebugMessage(category, msg)
+		if debugPaused then return end
 		local timestamp = date("%H:%M:%S")
 		-- Sanitize all parts to prevent secret values from reaching table.concat
 		local entry = timestamp .. " [" .. SafeToString(category) .. "] " .. SafeToString(msg)
@@ -2427,6 +2429,23 @@ do
 		end)
 		frame.scrollBottomButton = scrollBottomButton
 
+		-- Pause/Resume toggle button
+		local pauseButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+		pauseButton:SetSize(120, BUTTON_HEIGHT)
+		pauseButton:SetPoint("LEFT", scrollBottomButton, "RIGHT", BUTTON_SPACING, 0)
+		pauseButton:SetText("Pause Output")
+		pauseButton:SetScript("OnClick", function(self)
+			debugPaused = not debugPaused
+			if debugPaused then
+				self:SetText("Resume Output")
+			else
+				self:SetText("Pause Output")
+				frame:UpdateText()
+				frame:ScrollToBottom()
+			end
+		end)
+		frame.pauseButton = pauseButton
+
 		-- Close button
 		local closeButton = CreateFrame("Button", "NeatPlatesDebugCloseButton", frame, "UIPanelButtonTemplate")
 		closeButton:SetSize(80, BUTTON_HEIGHT)
@@ -2519,6 +2538,8 @@ do
 		Clear = ClearDebugLog,
 		GetLog = GetDebugLog,
 		GetCount = GetDebugLogCount,
+		SetPaused = function(paused) debugPaused = paused end,
+		IsPaused = function() return debugPaused end,
 	}
 end
 

@@ -45,6 +45,8 @@ local CombatLogGetCurrentEventInfo = C_CombatLog and C_CombatLog.GetCurrentEvent
 -- Debug flag for raid icon troubleshooting (set to true to enable debug output)
 -- This is a global so it can be toggled via /npdebug raidicon
 NEATPLATES_DEBUG_RAIDICON = false
+-- Debug flag for threat percentage widget (toggled via /npdebug threat)
+NEATPLATES_DEBUG_THREAT = false
 local function DebugRaidIcon(msg)
 	if NEATPLATES_DEBUG_RAIDICON then
 		-- Use the debug window system instead of print() for better debugging experience

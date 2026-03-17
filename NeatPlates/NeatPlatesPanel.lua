@@ -1406,6 +1406,21 @@ SlashCmdList['NeatPlatesDebug'] = function(arg)
 		else
 			print(orange.."NeatPlates: "..red.."Raid icon debug: OFF")
 		end
+	elseif arg == "threat" then
+		-- Toggle threat percentage debug mode (defined in NeatPlatesCore.lua)
+		NEATPLATES_DEBUG_THREAT = not NEATPLATES_DEBUG_THREAT
+		if NEATPLATES_DEBUG_THREAT then
+			print(orange.."NeatPlates: "..green.."Threat debug: ON")
+			print(orange.."NeatPlates: "..white.."Debug output will appear in the debug window.")
+			-- Show the debug window when enabling
+			if NeatPlatesUtility and NeatPlatesUtility.Debug then
+				NeatPlatesUtility.Debug.Show()
+			end
+			-- Force an update to trigger debug output
+			NeatPlates:ForceUpdate()
+		else
+			print(orange.."NeatPlates: "..red.."Threat debug: OFF")
+		end
 	elseif arg == "auras" then
 		-- Toggle aura debug mode (defined in NeatPlatesWidgets/AuraWidget.lua)
 		NEATPLATES_DEBUG_AURAS = not NEATPLATES_DEBUG_AURAS
@@ -1688,6 +1703,7 @@ SlashCmdList['NeatPlatesDebug'] = function(arg)
 		print(orange.."NeatPlates Debug Commands:")
 		print(white.."  /npdebug quest"..yellow.." - Debug quest objectives")
 		print(white.."  /npdebug blizzardplate"..yellow.." - Toggle blizzard plate for target")
+		print(white.."  /npdebug threat"..yellow.." - Toggle threat percentage debug (shows window)")
 		print(white.."  /npdebug raidicon"..yellow.." - Toggle raid icon debug (shows window)")
 		print(white.."  /npdebug auras"..yellow.." - Toggle aura/debuff debug (shows window)")
 		print(white.."  /npdebug hitbox"..yellow.." - Show hitbox size calculation details")

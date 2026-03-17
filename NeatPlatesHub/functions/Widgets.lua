@@ -27,6 +27,13 @@ local CreateThreatPercentageWidget = WidgetLib.CreateThreatPercentageWidget
 local CreateResourceWidget = WidgetLib.CreateResourceWidget
 local issecretvalue = issecretvalue or function() return false end
 
+-- Debug helper for threat widget initialization
+local function ThreatInitDbg(msg)
+	if NEATPLATES_DEBUG_THREAT and NeatPlatesUtility and NeatPlatesUtility.Debug then
+		NeatPlatesUtility.Debug.Log("ThreatInit", msg)
+	end
+end
+
 NeatPlatesHubDefaults.WidgetRangeMode = 1
 NeatPlatesHubMenus.RangeModes = {
 				{ text = L["Simple"]} ,
@@ -695,6 +702,14 @@ end
 local function InitWidget( widgetName, extended, config, createFunction, enabled)
 	local widget = extended.widgets[widgetName]
 
+	-- Debug output for threat percentage widget initialization
+	if widgetName == "ThreatPercentageWidgetHub" then
+		ThreatInitDbg("InitWidget('ThreatPercentageWidgetHub') | enabled=" .. tostring(enabled) .. " config=" .. tostring(config ~= nil) .. " createFn=" .. tostring(createFunction ~= nil) .. " existing=" .. tostring(widget ~= nil))
+		if config then
+			ThreatInitDbg("config: anchor=" .. tostring(config.anchor) .. " x=" .. tostring(config.x) .. " y=" .. tostring(config.y))
+		end
+	end
+
 	if enabled and createFunction and config then
 		--[[ Data from Themes passed to parent ]] --
 		extended.widgetParent.config = config
@@ -704,12 +719,21 @@ local function InitWidget( widgetName, extended, config, createFunction, enabled
 
 		if widget then
 			if widget.UpdateConfig then widget:UpdateConfig() end
+			if widgetName == "ThreatPercentageWidgetHub" then
+				ThreatInitDbg("widget already exists, reusing")
+			end
 		else
 			widget = createFunction(extended.widgetParent)
 			extended.widgets[widgetName] = widget
+			if widgetName == "ThreatPercentageWidgetHub" then
+				ThreatInitDbg("NEW widget created")
+			end
 		end
 
 		SetWidgetPoints(widget, extended, config)
+		if widgetName == "ThreatPercentageWidgetHub" then
+			ThreatInitDbg("SetWidgetPoints called")
+		end
 
 	elseif widget and widget.Hide then
 		widget:Hide()
@@ -735,6 +759,8 @@ local function OnInitializeWidgets(extended, configTable)
 	local EnableQuestWidget = LocalVars.WidgetQuestIcon
 	local EnableThreatPercentageWidget = LocalVars.WidgetThreatPercentage
 	local EnableRangeWidget = LocalVars.WidgetRangeIndicator
+
+	ThreatInitDbg("OnInitializeWidgets: EnableThreatPercentageWidget=" .. tostring(EnableThreatPercentageWidget) .. " configTable.ThreatPercentageWidget=" .. tostring(configTable.ThreatPercentageWidget ~= nil) .. " CreateThreatPercentageWidget fn=" .. tostring(CreateThreatPercentageWidget ~= nil))
 
 	if NEATPLATES_IS_CLASSIC then
 		EnableAbsorbWidget = false
@@ -797,7 +823,11 @@ local function OnContextUpdateDelegate(extended, unit)
 		widgets.AbsorbWidgetHub:UpdateContext(unit) end
 
 	if LocalVars.WidgetThreatPercentage and widgets.ThreatPercentageWidgetHub then
-		widgets.ThreatPercentageWidgetHub:UpdateContext(unit) end
+		ThreatInitDbg("OnContextUpdate: calling UpdateContext for ThreatPercentageWidgetHub")
+		widgets.ThreatPercentageWidgetHub:UpdateContext(unit)
+	else
+		ThreatInitDbg("OnContextUpdate: SKIPPED ThreatPercentageWidgetHub | enabled=" .. tostring(LocalVars.WidgetThreatPercentage) .. " widget=" .. tostring(widgets.ThreatPercentageWidgetHub ~= nil))
+	end
 
 	if LocalVars.WidgetRangeIndicator and widgets.RangeWidgetHub then
 		widgets.RangeWidgetHub:UpdateContext(unit) end
