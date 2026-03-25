@@ -1094,7 +1094,6 @@ local function ShowDropdownMenu(sourceFrame, menu, clickScript)
 			button.tooltipText = tooltipText
 			if currentSelection == i or itemText == currentSelection then
 				region1:SetTextColor(1, .8, 0)
-				region1:SetFont(1, .8, 0)
 			else
 				region1:SetTextColor(1, 1, 1)
 			end
