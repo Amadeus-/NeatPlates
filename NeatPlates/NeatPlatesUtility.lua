@@ -739,6 +739,7 @@ local function AddTooltipToLabel(label, widget)
 			C_Timer.After(0.25, function()
 				if w.isMouseover then
 					GameTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+					if GameTooltip.ItemTooltip then GameTooltip.ItemTooltip:Hide() end
 					GameTooltip:ClearAllPoints()
 					GameTooltip:SetText(w.tooltipText, nil, nil, nil, nil, true)
 					GameTooltip:SetPoint("BOTTOMLEFT", w, "TOPRIGHT", -12, -12)
@@ -779,6 +780,7 @@ local function AddTooltipToWidget(widget)
 			C_Timer.After(0.25, function()
 				if self.isMouseover then
 					GameTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+					if GameTooltip.ItemTooltip then GameTooltip.ItemTooltip:Hide() end
 					GameTooltip:ClearAllPoints()
 					GameTooltip:SetText(self.tooltipText, nil, nil, nil, nil, true)
 					GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPRIGHT", -12, -12)
@@ -1111,6 +1113,7 @@ local function ShowDropdownMenu(sourceFrame, menu, clickScript)
 					C_Timer.After(0.25, function()
 						if self.isMouseover then
 							GameTooltip:SetOwner(UIParent, "ANCHOR_NONE");
+							if GameTooltip.ItemTooltip then GameTooltip.ItemTooltip:Hide() end
 							GameTooltip:ClearAllPoints();
 							GameTooltip:SetText(self.tooltipText, 1.0, 1.0, 1.0, self.newbieText, true);
 							GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPRIGHT", -12, -12);
