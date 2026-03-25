@@ -709,9 +709,7 @@ do
 	--------------------------------
 		local bars, regions = {}, {}
 		local carrier
-		local frameName = "NeatPlatesCarrier"..numChildren
-
-		carrier = CreateFrame("Frame", frameName, WorldFrame)
+		carrier = CreateFrame("Frame", nil, WorldFrame)
 		local extended = CreateFrame("Frame", nil, carrier)
 
 		plate.carrier = carrier
