@@ -23,6 +23,8 @@ local artstyle = "Neat"
 local timerFontSize = 8
 local displayTimer = true
 local hideOnEmpty = false
+local showPowerBar = false
+local refillBrightness = 0.8
 
 ------------------------------
 -- Debug
@@ -464,6 +466,15 @@ local function UpdatePoints(self)
         local texture = GetResourceTexture(pointData["ICON"], pointData["STATE"])
         -- print(texture)
         frame.Icon:SetTexture(texture)
+        if pointData["STATE"] == "Off" or pointData["STATE"] == "Charged-Off" then
+            frame.Icon:SetDesaturated(true)
+            frame.Icon:SetAlpha(0.6)
+            frame.Icon:SetVertexColor(1, 1, 1)
+        else
+            frame.Icon:SetDesaturated(false)
+            frame.Icon:SetAlpha(1.0)
+            frame.Icon:SetVertexColor(1.75, 1.75, 1.75)
+        end
         if pointData["COLOR"] then
             r,g,b,a = unpack(pointData["COLOR"])
             frame.Icon:SetVertexColor(r or 1, g or 1, b or 1, a or 1)
@@ -476,7 +487,7 @@ local function UpdatePoints(self)
         if expiration and expiration > 0 then
             if pointData["SWIPE"] then
                 frame.Cooldown:SetSwipeTexture(GetResourceTexture(pointData["SWIPE"]))
-                frame.Cooldown:SetSwipeColor(0.8, 0.8, 0.8, 1)
+                frame.Cooldown:SetSwipeColor(refillBrightness, refillBrightness, refillBrightness, 1)
                 frame.Cooldown:SetEdgeTexture(GetResourceTexture("SwipeEdge"))
             end
             frame.Cooldown:SetCooldown(expiration-duration, duration)
@@ -497,6 +508,11 @@ end
 -- Widget Update
 local function UpdateWidgetFrame(widget)
     widget:UpdatePoints()
+    if widget.PowerBar and showPowerBar then
+        widget.UpdatePowerBar(widget.PowerBar)
+    elseif widget.PowerBar then
+        widget.PowerBar:Hide()
+    end
 end
 
 -- Widget Context
@@ -582,6 +598,39 @@ if not NEATPLATES_IS_CLASSIC then
 	SpecWatcher:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
 end
 
+-- Power Bar Update
+local function UpdatePowerBar(powerBar)
+	if not showPowerBar or not powerBar then return end
+
+	local powerType = UnitPowerType("player")
+
+	-- Use pcall for UnitPower/UnitPowerMax since they return secret values in combat
+	local okCur, curPower = pcall(UnitPower, "player", powerType)
+	local okMax, maxPower = pcall(UnitPowerMax, "player", powerType)
+
+	if not okCur then curPower = 0 end
+	if not okMax then maxPower = 0 end
+
+	-- For visibility check, we need to compare maxPower > 0
+	-- but maxPower may be a secret value during combat
+	local shouldShow = true
+	if issecretvalue(maxPower) then
+		-- Can't check, assume visible; StatusBar handles secrets natively
+		shouldShow = true
+	else
+		shouldShow = maxPower > 0
+	end
+
+	if shouldShow then
+		-- StatusBar:SetMinMaxValues and SetValue handle secret values natively at C++ level
+		powerBar:SetMinMaxValues(0, maxPower)
+		powerBar:SetValue(curPower)
+		powerBar:Show()
+	else
+		powerBar:Hide()
+	end
+end
+
 -- Widget Creation
 local function CreateWidgetFrame(parent)
     if not NEATPLATES_IS_CLASSIC then
@@ -597,6 +646,25 @@ local function CreateWidgetFrame(parent)
 
     frame.UpdatePoints = UpdatePoints -- Point update function
     frame:UpdatePoints() -- Create points
+
+    -- Power Bar (shows player power below resource icons)
+    local powerBar = CreateFrame("StatusBar", nil, frame)
+    powerBar:SetSize(70, 4)
+    powerBar:SetPoint("TOP", frame, "TOP", 0, -22)
+    powerBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    powerBar:SetStatusBarColor(0.5, 0.9, 1.0, 1.0)
+    powerBar:SetMinMaxValues(0, 1)
+    powerBar:SetValue(0)
+    powerBar:EnableMouse(false)
+    powerBar:Hide()
+
+    -- Background for power bar
+    local bg = powerBar:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(powerBar)
+    bg:SetColorTexture(0, 0, 0, 0.6)
+
+    frame.PowerBar = powerBar
+    frame.UpdatePowerBar = UpdatePowerBar
 
     -- Required Widget Code
 	frame.UpdateContext = UpdateWidgetContext
@@ -621,6 +689,8 @@ local function SetResourceWidgetOptions(LocalVars)
     end
     displayTimer = LocalVars.WidgetResourceDisplayTimer
     hideOnEmpty = LocalVars.WidgetResourceHideEmpty
+    showPowerBar = LocalVars.WidgetPowerBar
+    refillBrightness = (LocalVars.WidgetResourceRefillBrightness or 80) / 100
 
 	NeatPlates:ForceUpdate()
 end

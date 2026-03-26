@@ -311,6 +311,8 @@ NeatPlatesHubDefaults = {
 	WidgetResourceTimerFontSize = 8,
 	WidgetResourceDisplayTimer = true,
 	WidgetResourceHideEmpty = false,
+	WidgetResourceRefillBrightness = 80,
+	WidgetPowerBar = false,
 
 	-- Aura Widget
 	---------------------------------------

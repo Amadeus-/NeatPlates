@@ -541,8 +541,11 @@ L["The spacing between each icon/point"] = true
 L["Display Duration"] = true
 L["Duration Font Size"] = true
 L["Hide when empty"] = true
+L["Refill Brightness"] = true
 L["Show the time remaining on the resource icon. Only applicable to Death Knight runes"] = true
 L["Hide the widget if the resource is empty/zero. Only applicable to some classes"] = true
+L["Show Power Bar"] = true
+L["Show a bar displaying your current power (mana/energy/rage/etc.) below the resource icons"] = true
 
 ------------------------------
 -- Other Widgets

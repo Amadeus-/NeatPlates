@@ -635,8 +635,10 @@ local function BuildHubPanel(panel)
 	------------------------------
 	-- Resource Widget
 	------------------------------
-	panel.WidgetResourceLabel = CreateQuickHeadingLabel(nil, L["Personal Resource Display"] .. ' (BETA)', AlignmentColumn, F, 0, 5)
-	panel.WidgetResourceMode, F =  CreateQuickDropdown(objectName.."WidgetResource", L["Show On"]..':', ComboPointsModes, 1, AlignmentColumn, panel.WidgetResourceLabel)
+	panel.WidgetResourceLabel = CreateQuickHeadingLabel(nil, L["Personal Resource Display"], AlignmentColumn, F, 0, 5)
+	panel.WidgetPowerBar, F = CreateQuickCheckbutton(objectName.."WidgetPowerBar", L["Show Power Bar"], AlignmentColumn, panel.WidgetResourceLabel, 0, 0)
+	panel.WidgetPowerBar.tooltipText = L["Show a bar displaying your current power (mana/energy/rage/etc.) below the resource icons"]
+	panel.WidgetResourceMode, F =  CreateQuickDropdown(objectName.."WidgetResource", L["Show On"]..':', ComboPointsModes, 1, AlignmentColumn, F)
 	panel.WidgetResourceStyle, F =  CreateQuickDropdown(objectName.."WidgetResourceStyle", L["Style"]..':', ResourceWidgetStyles, 2, AlignmentColumn, panel.WidgetResourceMode)
 	panel.WidgetResourceSpacing, F = CreateQuickSlider(objectName.."WidgetResourceSpacing", L["Icon Spacing"]..':', "ACTUAL", 150, AlignmentColumn, panel.WidgetResourceStyle)
 	panel.WidgetResourceSpacing.tooltipText = L["The spacing between each icon/point"]
@@ -645,6 +647,7 @@ local function BuildHubPanel(panel)
 	panel.WidgetResourceTimerFontSize = CreateQuickSlider(objectName.."WidgetResourceTimerFontSize", L["Duration Font Size"]..':', "ACTUAL", 150, AlignmentColumn, panel.WidgetResourceDisplayTimer, OffsetColumnB+76)
 	panel.WidgetResourceHideEmpty = CreateQuickCheckbutton(objectName.."WidgetResourceHideEmpty", L["Hide when empty"], AlignmentColumn, panel.WidgetResourceTimerFontSize, OffsetColumnB+76)
 	panel.WidgetResourceHideEmpty.tooltipText = L["Hide the widget if the resource is empty/zero. Only applicable to some classes"]
+	panel.WidgetResourceRefillBrightness = CreateQuickSlider(objectName.."WidgetResourceRefillBrightness", L["Refill Brightness"].." (%):", "ACTUAL", 150, AlignmentColumn, panel.WidgetResourceHideEmpty, OffsetColumnB+76)
 	--[[
 	------------------------------
 	-- Text
@@ -766,6 +769,7 @@ local function BuildHubPanel(panel)
 
 	SetSliderMechanics(panel.WidgetResourceSpacing, 0, -50, 50, 1)
 	SetSliderMechanics(panel.WidgetResourceTimerFontSize, 0, 0, 20, 1)
+	SetSliderMechanics(panel.WidgetResourceRefillBrightness, 0, 0, 100, 1)
 
 	SetSliderMechanics(panel.FrameVerticalPosition, .5, 0, 1, .02)
 	SetSliderMechanics(panel.FrameBarWidth, 1, .3, 1.7, .02)
