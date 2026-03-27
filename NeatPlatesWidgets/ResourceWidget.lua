@@ -697,3 +697,9 @@ end
 
 NeatPlatesWidgets.CreateResourceWidget = CreateWidgetFrame
 NeatPlatesWidgets.SetResourceWidgetOptions = SetResourceWidgetOptions
+
+-- Expose showPowerBar so NeatPlatesCore can check if the power bar is active
+-- (used to shift the cast bar down on the target nameplate when power bar is visible)
+function NeatPlatesWidgets.IsResourcePowerBarEnabled()
+	return showPowerBar
+end

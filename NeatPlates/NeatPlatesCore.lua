@@ -361,6 +361,7 @@ local UpdateIndicator_Level, UpdateIndicator_ThreatGlow, UpdateIndicator_RaidIco
 local UpdateIndicator_EliteIcon, UpdateIndicator_UnitColor, UpdateIndicator_Name
 local UpdateIndicator_HealthBar, UpdateIndicator_Highlight, UpdateIndicator_ExtraBar, UpdateIndicator_PowerBar
 local OnUpdateCasting, OnStartCasting, OnStopCasting, OnUpdateCastMidway, OnInterruptedCast
+local GetPowerBarCastOffset
 
 -- Event Functions
 local OnShowNameplate, OnHideNameplate, OnUpdateNameplate, OnResetNameplate
@@ -1876,6 +1877,15 @@ do
 		end
 	end
 
+	-- GetPowerBarCastOffset: Returns the Y offset to apply to cast elements
+	-- when the resource power bar is visible on the target nameplate.
+	GetPowerBarCastOffset = function()
+		if unit.isTarget and NeatPlatesWidgets and NeatPlatesWidgets.IsResourcePowerBarEnabled and NeatPlatesWidgets.IsResourcePowerBarEnabled() then
+			return -10
+		end
+		return 0
+	end
+
 	-- OnShowCastbar
 	function OnStartCasting(plate, unitid, channeled)
 		local guid = unitid -- Clasic era, we pass a guid instead of unitid
@@ -1980,7 +1990,8 @@ do
 		if style and style.spelltext then
 			visual.spelltext:SetWidth(style.spelltext.width or 128)
 			visual.spelltext:ClearAllPoints()
-			visual.spelltext:SetPoint(style.spelltext.anchor or "CENTER", extended, style.spelltext.anchor or "CENTER", style.spelltext.x or 0, style.spelltext.y or 0)
+			local castOffset = GetPowerBarCastOffset()
+			visual.spelltext:SetPoint(style.spelltext.anchor or "CENTER", extended, style.spelltext.anchor or "CENTER", style.spelltext.x or 0, (style.spelltext.y or 0) + castOffset)
 		end
 
 		-- Set spell text & duration
@@ -2101,6 +2112,20 @@ do
 				visual.castborder:Show()
 			else
 				visual.castborder:Hide()
+			end
+		end
+
+		-- Apply power bar offset to all cast-related elements (castbar itself,
+		-- borders, icon) so they shift down when the resource bar is visible.
+		-- spelltext is already offset above when its anchor is restored.
+		local castOffset = GetPowerBarCastOffset()
+		local castOffsetElements = {"castbar", "castborder", "castnostop", "spelltarget", "durationtext", "spellicon"}
+		for _, objectname in ipairs(castOffsetElements) do
+			local object = visual[objectname]
+			local objectstyle = style[objectname]
+			if object and objectstyle then
+				object:ClearAllPoints()
+				object:SetPoint(objectstyle.anchor or "CENTER", extended, objectstyle.anchor or "CENTER", objectstyle.x or 0, (objectstyle.y or 0) + castOffset)
 			end
 		end
 
@@ -2861,6 +2886,16 @@ do
 				visual[objectname]:SetBlendMode(objectstyle.blend)
 			else
 				visual[objectname]:SetBlendMode("BLEND")	-- Default mode
+			end
+		end
+		-- Shift cast bar elements down when the resource power bar is visible on the target
+		local powerBarCastOffset = GetPowerBarCastOffset()
+		local castElements = {"castbar", "castborder", "castnostop", "spelltext", "spelltarget", "durationtext", "spellicon"}
+		for _, objectname in ipairs(castElements) do
+			local object = visual[objectname]
+			local objectstyle = style[objectname]
+			if object and objectstyle then
+				SetAnchorGroupObject(object, objectstyle, extended, powerBarCastOffset)
 			end
 		end
 		-- Hide Stuff
