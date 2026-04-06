@@ -107,13 +107,19 @@ local function GetBlizzardImportantAuras(unit)
 		end
 	end
 
-	-- Always return the table, even if empty. An empty table means Blizzard has
-	-- zero important auras to show, which is a valid state (e.g., all important
-	-- debuffs expired). The caller must distinguish between:
-	--   nil     = infrastructure unavailable, cannot determine importance
-	--   {}      = Blizzard says nothing is important, show nothing
+	-- Return the whitelist, or nil if empty.
+	-- We cannot distinguish between "Blizzard has zero important auras" and
+	-- "Blizzard's AurasFrame hasn't processed auras yet" (e.g., nameplate just
+	-- appeared). Returning {} would filter out ALL auras in the latter case,
+	-- causing a visible delay until the AurasFrame catches up. Returning nil
+	-- tells the caller to skip whitelist filtering, which is safe because the
+	-- normal AuraFilterFunction still applies.
+	--   nil     = no whitelist data (infrastructure unavailable OR empty result)
 	--   {ids..} = only show these specific auras
-	return important
+	if next(important) then
+		return important
+	end
+	return nil
 end
 
 -- 12.0.0+: Use C_UnitAuras.GetUnitAuras() which returns full aura data tables
