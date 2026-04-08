@@ -635,16 +635,36 @@ local function DebuffFilter(aura)
 	local auraType = aura.type
 	local auraTypeIsSecret = issecretvalue and issecretvalue(auraType)
 
-	-- Purgeable Buff
-	if LocalVars.WidgetBuffPurgeable and aura.effect == "HELPFUL" and (not auraTypeIsSecret and auraType == "Magic") and aura.reaction == 1 then
-		local color = LocalVars.ColorBuffPurgeable
-		return true, 10, color.r, color.g, color.b, color.a
+	-- Purgeable/Enrage hostile buff handling
+	if aura.effect == "HELPFUL" and aura.reaction == 1 then
+		if auraTypeIsSecret then
+			-- In 12.0.0+ combat, dispelName is a secret value so we cannot
+			-- distinguish between purgeable (Magic) and enrage (empty) buffs.
+			-- The INCLUDE_NAME_PLATE_ONLY filter already limits hostile buffs to
+			-- stealable/important/enrage, so showing them when either option is
+			-- enabled is acceptable with minimal false positives.
+			if LocalVars.WidgetBuffPurgeable then
+				local color = LocalVars.ColorBuffPurgeable
+				return true, 10, color.r, color.g, color.b, color.a
+			elseif LocalVars.WidgetBuffEnrage then
+				local color = LocalVars.ColorBuffEnrage
+				return true, 10, color.r, color.g, color.b, color.a
+			end
+		else
+			-- Normal path: dispelName is readable, check type directly
+			-- Purgeable Buff (Magic type)
+			if LocalVars.WidgetBuffPurgeable and auraType == "Magic" then
+				local color = LocalVars.ColorBuffPurgeable
+				return true, 10, color.r, color.g, color.b, color.a
+			end
+			-- Sootheable Enrage Buff (empty dispelName)
+			if LocalVars.WidgetBuffEnrage and auraType == "" then
+				local color = LocalVars.ColorBuffEnrage
+				return true, 10, color.r, color.g, color.b, color.a
+			end
+		end
 	end
-	-- Sootheable Enrage Buff
-	if LocalVars.WidgetBuffEnrage and aura.effect == "HELPFUL" and (not auraTypeIsSecret and auraType == "") and aura.reaction == 1 then
-		local color = LocalVars.ColorBuffEnrage
-		return true, 10, color.r, color.g, color.b, color.a
-	end
+
 	-- Dispellable Debuff
 	if (LocalVars.WidgetAuraTrackDispelFriendly and aura.reaction == AURA_TARGET_FRIENDLY) then
 		if (aura.effect == "HARMFUL" and TrackDispelType(auraType)) then

@@ -2525,6 +2525,24 @@ do
 						-- from Blizzard's filtered aura lists to determine which auras are important.
 						-- The AurasFrame itself is invisible (alpha 0) so no visual overhead.
 						plate.UnitFrame:RegisterUnitEvent("UNIT_AURA", unitid)
+
+						-- Hook Blizzard's RefreshAuras to trigger NeatPlates aura update AFTER
+						-- Blizzard has processed the same UNIT_AURA event. This ensures:
+						-- 1) The "important auras" whitelist is current (GetBlizzardImportantAuras)
+						-- 2) Aura data is guaranteed available from the API
+						-- This is the same approach Platynator uses for reliable aura updates.
+						-- Only hook once per plate (persists across unit reassignments).
+						if plate.UnitFrame.AurasFrame and not plate._neatplatesAuraHooked then
+							hooksecurefunc(plate.UnitFrame.AurasFrame, "RefreshAuras", function(af)
+								if not af:IsForbidden() then
+									local hookUnitid = PlatesVisible[plate]
+									if hookUnitid and NeatPlatesWidgets and NeatPlatesWidgets.ForceAuraUpdate then
+										NeatPlatesWidgets.ForceAuraUpdate(hookUnitid)
+									end
+								end
+							end)
+							plate._neatplatesAuraHooked = true
+						end
 					else
 						-- Pre-12.0: Hide the entire UnitFrame (click targeting worked differently)
 						plate.UnitFrame:Hide()

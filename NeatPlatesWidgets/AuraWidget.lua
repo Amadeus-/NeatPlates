@@ -399,12 +399,39 @@ end
 -----------------------------------------------------
 
 
+local pendingAuraUpdates = {}
+
 local function EventUnitAura(unitid, updateInfo)
 	local frame
 
 	if unitid then frame = WidgetList[unitid] end
 
-	if frame then UpdateWidget(frame) end
+	if frame then
+		if ShowImportantAurasOnly then
+			-- When using Blizzard's "important auras" whitelist, we read from
+			-- Blizzard's AurasFrame layout children (GetBlizzardImportantAuras).
+			-- But when UNIT_AURA fires, our AuraMonitor may process the event
+			-- BEFORE Blizzard's own UnitFrame handler updates its AurasFrame.
+			-- This causes us to read a stale whitelist that's missing newly applied
+			-- auras, making them appear delayed or invisible.
+			--
+			-- Fix: Defer the update by one frame so Blizzard's AurasFrame has time
+			-- to process the same UNIT_AURA event first. Uses a simple debounce
+			-- table to avoid queueing duplicate updates for the same unit.
+			if not pendingAuraUpdates[unitid] then
+				pendingAuraUpdates[unitid] = true
+				C_Timer.After(0, function()
+					pendingAuraUpdates[unitid] = nil
+					local currentFrame = WidgetList[unitid]
+					if currentFrame then
+						UpdateWidget(currentFrame)
+					end
+				end)
+			end
+		else
+			UpdateWidget(frame)
+		end
+	end
 
 end
 
@@ -1451,6 +1478,12 @@ NeatPlatesWidgets.CreateAuraWidget = CreateAuraWidget
 
 NeatPlatesWidgets.EnableAuraWatcher = Enable
 NeatPlatesWidgets.DisableAuraWatcher = Disable
+
+-- Allow external code to force an aura update for a specific unit
+NeatPlatesWidgets.ForceAuraUpdate = function(unitid)
+	local frame = WidgetList[unitid]
+	if frame then UpdateWidget(frame) end
+end
 
 -----------------------------------------------------
 -- Soon to be deprecated
