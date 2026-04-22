@@ -1,4 +1,4 @@
-## Interface: 11507, 20504, 30404, 40402, 50500, 120000, 120001
+## Interface: 11507, 20504, 30404, 40402, 50500, 120005, 120007
 ## Title: NeatPlates Hub
 ## Notes: Provides a common configuration panel for supported themes.
 ## Author: Luxocracy and friends
