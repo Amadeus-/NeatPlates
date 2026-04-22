@@ -2775,6 +2775,8 @@ do
 
 	local function SetObjectFont(object,  font, size, flags)
 		if OverrideOutline == 2 then flags = "NONE" elseif OverrideOutline == 3 then flags = "OUTLINE" elseif OverrideOutline == 4 then flags = "THICKOUTLINE" end
+		-- WoW 12.0.5 tightened FontString:SetFont validation; "NONE" is no longer a valid flag. Normalize to "".
+		if flags == "NONE" or flags == nil then flags = "" end
 		if (not OverrideFonts) and font then
 			object:SetFont(font, size or 10, flags)
 		--else
